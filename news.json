@@ -1,5 +1,13 @@
-
 {
   "format": "wow-forever-news-v2",
-  "news": []
+  "news": [
+    {
+      "id": "115",
+      "title": "Тест синхронизации WoW Forever",
+      "date": "2026-10-12",
+      "body": "Тест синхронизации WoW Forever\n+++\nПроверяем автоматическую передачу новостей из Telegram в Mini App",
+      "source": "https://t.me/WoW_Forever_RU/115",
+      "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/115.jpg"
+    }
+  ]
 }
