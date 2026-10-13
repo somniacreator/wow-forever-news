@@ -2,6 +2,14 @@
   "format": "wow-forever-news-v2",
   "news": [
     {
+      "id": "138",
+      "title": "⚔️ WoW Forever Mini App — обновление 1.1.10!",
+      "date": "2026-10-13",
+      "body": "⚔️ WoW Forever Mini App — обновление 1.1.10!\n---\n🧵 Большое обновление портняжного дела!\n\nТеперь в карточках предметов доступно значительно больше информации из Wowhead Forever:\n\n⚔️ Характеристики, бонусы и магические эффекты.\n🪙 Цена продажи в золоте, серебре и меди.\n🎨 Цвета названий в зависимости от качества предметов.\n\n📚 Обновлены данные 421 записи портняжного дела!\n\n✨ Изучайте рецепты и характеристики предметов прямо в нашем приложении.\n\nWoW Forever — путеводитель по Азероту!",
+      "source": "https://t.me/WoW_Forever_RU/138",
+      "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/138.jpg"
+    },
+    {
       "id": "135",
       "title": "🏦 ОБЩИЙ БАНК В WORLD OF WARCRAFT: FOREVER?",
       "date": "2026-10-13",
