@@ -2,6 +2,14 @@
   "format": "wow-forever-news-v2",
   "news": [
     {
+      "id": "127",
+      "title": "Release 1.0.95 готов! ⚔️",
+      "date": "2026-10-13",
+      "body": "Release 1.0.95 готов! ⚔️\nУтвердили новую версию нашего WoW Forever Mini App.\n---\nВ релиз вошли:\nЕдиные игровые иконки для Профессий, Талантов, Поиска и Таймера.\nЗамена иконок в нижнем меню и заголовках соответствующих страниц.\nСохранение золотых рамок и общего оформления Warcraft.\nВсе предыдущие улучшения Release 1.0.94.",
+      "source": "https://t.me/WoW_Forever_RU/127",
+      "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/127.jpg"
+    },
+    {
       "id": "125",
       "title": "💣 ИНЖЕНЕРНОЕ ДЕЛО В WOW FOREVER — БОЛЕЕ 70 НОВЫХ РЕЦЕПТОВ!",
       "date": "2026-10-13",
