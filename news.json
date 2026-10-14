@@ -2,6 +2,14 @@
   "format": "wow-forever-news-v2",
   "news": [
     {
+      "id": "145",
+      "title": "🏰 С 4 ДО 9 ПОДЗЕМЕЛИЙ! КАК РАЗРОСЛАСЬ WORLD OF WARCRAFT: FOREVER",
+      "date": "2026-10-14",
+      "body": "🏰 С 4 ДО 9 ПОДЗЕМЕЛИЙ! КАК РАЗРОСЛАСЬ WORLD OF WARCRAFT: FOREVER\n---\n⚔️ BLIZZARD РАССКАЗАЛА, КАК НЕБОЛЬШОЙ ПРОЕКТ ПРЕВРАТИЛСЯ В МАСШТАБНОЕ ПРИКЛЮЧЕНИЕ!\n\nВ интервью PC Gamer от 9 октября заместитель директора по производству Клей Стоун рассказал, как менялись планы разработчиков WoW Forever.\n\n🏰 ВСЁ НАЧИНАЛОСЬ С ЧЕТЫРЁХ ПОДЗЕМЕЛИЙ!\n\nИзначально команда планировала лишь несколько изменений классов и четыре новых подземелья.\n\n🔥 НО АППЕТИТЫ РОСЛИ!\n\nПо мере разработки количество подземелий увеличилось сначала до шести, а затем до девяти!\n\n🌍 БОЛЬШЕ, ЧЕМ ПРОСТО CLASSIC+!\n\nУспех Season of Discovery и других проектов Classic помог Blizzard убедиться, что классический Азерот можно развивать гораздо смелее.\n\n✨ В результате WoW Forever получила значительно более масштабный набор изменений, чем предполагалось первоначально.\n\n⚠️ ВАЖНО: девять подземелий — это уже известный контент, запланированный к запуску, а не девять дополнительных подземелий сверх объявленных.\n\n💬 А какое из новых подземелий вы больше всего ждёте?\n\n⚔️ За Азерот!\n\n🔗 Источник: https://www.pcgamer.com/games/world-of-warcraft/wow-forevers-list-of-changes-snowballed-as-blizzard-got-more-excited-says-dev-our-original-pitch-internally-was-well-do-4-new-dungeons/",
+      "source": "https://t.me/WoW_Forever_RU/145",
+      "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/145.jpg"
+    },
+    {
       "id": "143",
       "title": "⚔️ WoW FOREVER MINI APP — БОЛЬШОЕ ОБНОВЛЕНИЕ 1.1.22!",
       "date": "2026-10-13",
