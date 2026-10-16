@@ -164,6 +164,15 @@
       "body": "Тест синхронизации WoW Forever\n+++\nПроверяем автоматическую передачу новостей из Telegram в Mini App",
       "source": "https://t.me/WoW_Forever_RU/115",
       "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/115.jpg"
+    },
+    {
+      "id": "test-github-write-20261016",
+      "title": "Тест GitHub: MP4 и news.json",
+      "date": "2026-10-16",
+      "body": "Тестовая запись для проверки записи в GitHub. Не публиковать как новость.",
+      "source": "",
+      "image": "",
+      "video_url": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/test/mp4-json-2026-10-16/github-upload-test.mp4"
     }
   ]
 }
