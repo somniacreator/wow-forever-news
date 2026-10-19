@@ -1,4 +1,4 @@
-/* Parent wow.export shoulder meshes written at the scene origin to their shoulder joints at the confirmed attachment point. */
+/* Parent wow.export shoulder meshes written at the scene origin to their confirmed attachment bone ({ bone, position, scale }). */
 (() => {
   const mul = (a, b) => {
     const o = new Array(16);
@@ -36,15 +36,15 @@
     for(let i=0;i<nodes.length;i++){
       const n=nodes[i];if(n.mesh===undefined||n.skin!==undefined)continue;
       const name=String(n.name||'').toLowerCase(),side=/shoulder\s*\(?\s*l\s*\)?|shoulder.*left/.test(name)?'L':/shoulder\s*\(?\s*r\s*\)?|shoulder.*right/.test(name)?'R':'';
-      if(!side)continue;const bi=named.get(`bone_Shoulder${side}`);if(bi===undefined||!jointNames.has(`bone_Shoulder${side}`)||parents.get(i)===bi)continue;
-      const pos=attachments?.[side]?.position;
-      if(!Array.isArray(pos)||pos.length!==3||!pos.every(Number.isFinite)){if(!missing.includes(side))missing.push(side);continue;}
+      if(!side)continue;const att=attachments?.[side],boneName=att?.bone||`bone_Shoulder${side}`,bi=named.get(boneName);if(bi===undefined||!jointNames.has(boneName)||parents.get(i)===bi)continue;
+      const pos=att?.position,sc=att?.scale??1;
+      if(!Array.isArray(pos)||pos.length!==3||!pos.every(Number.isFinite)||!(Number.isFinite(sc)&&sc>0)){if(!missing.includes(side))missing.push(side);continue;}
       const skin=skins.find(s=>(s.joints||[]).includes(bi)),modelWorld=skin?.skeleton!==undefined?world(skin.skeleton):I;
       const boneInverse=inv(world(bi));if(!boneInverse)continue;
       const pi=parents.get(i);if(pi!==undefined)nodes[pi].children=(nodes[pi].children||[]).filter(c=>c!==i);
       else for(const scene of g.scenes||[])scene.nodes=(scene.nodes||[]).filter(c=>c!==i);
       nodes[bi].children=nodes[bi].children||[];if(!nodes[bi].children.includes(i))nodes[bi].children.push(i);
-      const m=mul(boneInverse,mul(modelWorld,mul(tr(pos),local(n))));
+      const m=mul(boneInverse,mul(modelWorld,mul(tr(pos),mul([sc,0,0,0,0,sc,0,0,0,0,sc,0,0,0,0,1],local(n)))));
       delete n.translation;delete n.rotation;delete n.scale;n.matrix=m;parents.set(i,bi);cache.clear();count++;
     }
     if(!count)return {blob:file,attached:0,missing};

@@ -185,22 +185,44 @@ function modelSpaceWorld(gltf, boneIndex, resolver) {
 
 function validAttachment(attachment) {
   const position = attachment?.position;
-  return Array.isArray(position) && position.length === 3 && position.every(Number.isFinite) ? attachment : null;
+  if (!Array.isArray(position) || position.length !== 3 || !position.every(Number.isFinite)) return null;
+  if (attachment.scale !== undefined && !(Number.isFinite(attachment.scale) && attachment.scale > 0)) return null;
+  if (attachment.bone !== undefined && typeof attachment.bone !== 'string') return null;
+  return attachment;
 }
+
+const attachmentBone = (attachment, side) => attachment?.bone || `bone_Shoulder${side}`;
+
+/**
+ * Shoulder attachments measured for wow.export 0.2.19 scourgefemale_hd with
+ * Item 271754 (models shoulder_armor_skybornec60_d_01_l/_r): two OBJ exports in
+ * different poses were matched against the item GLBs, and the posed arm bones
+ * were recovered from the OBJ body. In both poses the item equals
+ * bone_Arm{L|R} * T(position) * S(0.65) with no extra rotation (residual 1e-6);
+ * position is the rest pivot of the shoulder-pad child bone of the arm, whose
+ * constant scale track is 0.65. Values are character model space in GLB axes.
+ */
+export const CONFIRMED_SHOULDER_ATTACHMENTS = Object.freeze({
+  scourgefemale_hd: Object.freeze({
+    L: Object.freeze({ bone: 'bone_ArmL', position: Object.freeze([-0.029423, 1.647001, -0.146441]), scale: 0.65 }),
+    R: Object.freeze({ bone: 'bone_ArmR', position: Object.freeze([-0.029423, 1.647, 0.146448]), scale: 0.65 })
+  })
+});
 
 /**
  * wow.export 0.2.19 places an attachment model as
  *   characterModel * boneMatrix(animation) * T(M2Attachment.position) * itemVertex
- * (M2RendererGL.getAttachmentTransform). In the rest pose boneMatrix is the
- * identity, so the item is only translated into character model space; neither
- * the attachment nor ItemDisplayInfo/ComponentModelFileData/ChrRaces carry a
- * scale. Expressed relative to the shoulder joint, this keeps the exported
- * (in-game) item size and lets the item follow the joint when it animates.
+ * (M2RendererGL.getAttachmentTransform). The attachment bone's own animation
+ * can scale the item (0.65 for scourgefemale_hd), so a confirmed attachment is
+ * { bone, position, scale } in rest-pose model space. Expressed relative to that
+ * bone it keeps the in-game size and follows the bone when it animates.
  */
-function attachmentLocalMatrix(modelWorld, boneWorld, position, itemLocal = IDENTITY) {
+function attachmentLocalMatrix(modelWorld, boneWorld, attachment, itemLocal = IDENTITY) {
   const boneInverse = invertMatrix(boneWorld);
   if (!boneInverse) return null;
-  return multiplyMatrix(boneInverse, multiplyMatrix(modelWorld, multiplyMatrix(translationMatrix(position), itemLocal)));
+  const scale = attachment.scale ?? 1;
+  const placement = multiplyMatrix(translationMatrix(attachment.position), [scale, 0, 0, 0, 0, scale, 0, 0, 0, 0, scale, 0, 0, 0, 0, 1]);
+  return multiplyMatrix(boneInverse, multiplyMatrix(modelWorld, multiplyMatrix(placement, itemLocal)));
 }
 
 function readGlbHeader(file) {
@@ -232,9 +254,10 @@ function rewriteGlbJson(file, jsonLength, gltf) {
 /**
  * Parents wow.export shoulder meshes that were written at the scene origin
  * (GLB export keeps attachment items in raw item space, without the attachment
- * offset) to their shoulder joints. `attachments` = { L: { position }, R: { position } }
- * must come from confirmed data (see deriveShoulderAttachments); sides without
- * it are left untouched and reported in `missing`.
+ * offset) to their attachment bones. `attachments` = { L: { bone, position, scale }, R: ... }
+ * must come from confirmed data (CONFIRMED_SHOULDER_ATTACHMENTS or
+ * deriveShoulderAttachments); sides without it are left untouched and reported
+ * in `missing`.
  */
 export async function attachDetachedShoulders(file, attachments = {}) {
   if (!file || file.size < 20) return { blob: file, attached: 0, missing: [] };
@@ -254,17 +277,17 @@ export async function attachDetachedShoulders(file, attachments = {}) {
     if (node.mesh === undefined || node.skin !== undefined) continue;
     const side = shoulderSide(node.name);
     if (!side) continue;
-    const boneName = `bone_Shoulder${side}`;
+    const attachment = validAttachment(attachments[side]);
+    const boneName = attachmentBone(attachment, side);
     const boneIndex = bones.get(boneName);
     if (boneIndex === undefined || !jointNames.has(boneName)) continue;
     if (resolver.parents.get(index) === boneIndex) continue;
-    const attachment = validAttachment(attachments[side]);
     if (!attachment) {
       if (!missing.includes(side)) missing.push(side);
       continue;
     }
 
-    const localToBone = attachmentLocalMatrix(modelSpaceWorld(gltf, boneIndex, resolver), resolver.world(boneIndex), attachment.position, nodeLocalMatrix(node));
+    const localToBone = attachmentLocalMatrix(modelSpaceWorld(gltf, boneIndex, resolver), resolver.world(boneIndex), attachment, nodeLocalMatrix(node));
     if (!localToBone) continue;
     const parentIndex = resolver.parents.get(index);
     if (parentIndex !== undefined) {
@@ -514,9 +537,9 @@ export async function deriveShoulderAttachments(objText, sources) {
  * to its matching shoulder joint. The source equipment GLBs have a one-bone
  * skin with an isolated skeleton; their geometry is already in local item
  * coordinates (bone_0 rests at its pivot, so its skin is the identity). We keep
- * geometry/materials 1:1 and place the item at its confirmed attachment point
- * (`asset.attachment.position`, see deriveShoulderAttachments) under the
- * shoulder joint, which then provides animation.
+ * geometry/materials 1:1 and place the item at its confirmed attachment
+ * (`asset.attachment` = { bone, position, scale }, see
+ * CONFIRMED_SHOULDER_ATTACHMENTS) under that bone, which then provides animation.
  */
 export async function attachShoulderAssets(characterFile, assets) {
   const { document: base, binary: baseBinary } = await readGlb(characterFile);
@@ -538,12 +561,13 @@ export async function attachShoulderAssets(characterFile, assets) {
   for (const asset of assets || []) {
     const side = asset?.side === 'R' ? 'R' : asset?.side === 'L' ? 'L' : '';
     if (!side) throw Error('Для GLB наплечника не задана сторона L/R');
-    const boneIndex = nodeByName.get(`bone_Shoulder${side}`);
-    if (boneIndex === undefined) throw Error(`В модели персонажа нет кости bone_Shoulder${side}`);
     const attachment = validAttachment(asset.attachment);
     if (!attachment) throw Error(`Для наплечника ${side} нет подтверждённой точки крепления (attachment.position)`);
-    const matrix = attachmentLocalMatrix(modelSpaceWorld(base, boneIndex, resolver), resolver.world(boneIndex), attachment.position);
-    if (!matrix) throw Error(`Кость bone_Shoulder${side} имеет вырожденную трансформацию`);
+    const boneName = attachmentBone(attachment, side);
+    const boneIndex = nodeByName.get(boneName);
+    if (boneIndex === undefined) throw Error(`В модели персонажа нет кости ${boneName}`);
+    const matrix = attachmentLocalMatrix(modelSpaceWorld(base, boneIndex, resolver), resolver.world(boneIndex), attachment);
+    if (!matrix) throw Error(`Кость ${boneName} имеет вырожденную трансформацию`);
     const source = await readGlb(asset.file);
     const src = source.document;
     const binaryOffset = (binaryLength + 3) & ~3;
@@ -621,5 +645,5 @@ export async function attachShoulderAssets(characterFile, assets) {
 }
 
 if (typeof window !== 'undefined') {
-  window.WFArmoryImport = { normalizeArmoryImport, attachDetachedShoulders, attachShoulderAssets, deriveShoulderAttachments };
+  window.WFArmoryImport = { normalizeArmoryImport, attachDetachedShoulders, attachShoulderAssets, deriveShoulderAttachments, CONFIRMED_SHOULDER_ATTACHMENTS };
 }

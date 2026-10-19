@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, access } from 'node:fs/promises';
 import vm from 'node:vm';
-import { attachDetachedShoulders, attachShoulderAssets, deriveShoulderAttachments } from '../src/wf-armory-import.mjs';
+import { attachDetachedShoulders, attachShoulderAssets, deriveShoulderAttachments, CONFIRMED_SHOULDER_ATTACHMENTS } from '../src/wf-armory-import.mjs';
 
 const dataUrl = (name) => new URL(`../data/${name}`, import.meta.url);
 const hasData = await access(dataUrl('scourgefemale_hd.glb')).then(() => true, () => false);
@@ -85,6 +85,19 @@ test('origin-detached wow.export shoulders are placed at the confirmed attachmen
   assertDetachedResult(json);
 });
 
+test('a confirmed attachment bone and scale are applied', async () => {
+  // Parent under bone_Root (world (3, 1, 0)) with the measured kind of record.
+  const result = await attachDetachedShoulders(makeGlb(detachedShoulders()), {
+    L: { bone: 'bone_Root', position: [0.1, 2.5, -0.2], scale: 0.65 }
+  });
+  assert.equal(result.attached, 1);
+  assert.deepEqual(result.missing, ['R']);
+  const { json } = await readGlb(result.blob);
+  assert.ok(json.nodes[1].children.includes(4));
+  assert.deepEqual(translationOf(json.nodes[4].matrix), [0.1, 1.5, -0.2]);
+  assert.ok(Math.abs(json.nodes[4].matrix[0] - 1.5 * 0.65) < 1e-9, 'item scale 1.5 times attachment scale 0.65');
+});
+
 test('without confirmed attachment data detached shoulders are not moved by guesswork', async () => {
   const file = makeGlb(detachedShoulders());
   const result = await attachDetachedShoulders(file);
@@ -121,6 +134,9 @@ test('the browser-loaded shoulder fix matches the module', async () => {
   const result = await window.WFArmoryImport.attachDetachedShoulders(makeGlb(detachedShoulders()), attachments);
   assert.equal(result.attached, 2);
   assertDetachedResult((await readGlb(result.blob)).json);
+  const scaled = await window.WFArmoryImport.attachDetachedShoulders(makeGlb(detachedShoulders()), { L: { bone: 'bone_Root', position: [0.1, 2.5, -0.2], scale: 0.65 } });
+  const scaledModule = await attachDetachedShoulders(makeGlb(detachedShoulders()), { L: { bone: 'bone_Root', position: [0.1, 2.5, -0.2], scale: 0.65 } });
+  assert.deepEqual(round((await readGlb(scaled.blob)).json.nodes[4].matrix), round((await readGlb(scaledModule.blob)).json.nodes[4].matrix));
   const missing = await window.WFArmoryImport.attachDetachedShoulders(makeGlb(detachedShoulders()));
   assert.equal(missing.attached, 0);
   assert.deepEqual(Array.from(missing.missing), ['L', 'R']);
@@ -294,5 +310,28 @@ test('uploaded wow.export shoulder GLBs: derived attachment round-trips and merg
   }
   for (const view of json.bufferViews) {
     assert.ok((view.byteOffset || 0) + view.byteLength <= binLength, 'bufferView remains inside the rewritten binary chunk');
+  }
+});
+
+test('confirmed scourgefemale_hd attachments put the uploaded shoulders on the arm bones at 0.65', { skip: !hasData && 'нет data/*.glb' }, async () => {
+  const body = await loadData('scourgefemale_hd.glb');
+  const confirmed = CONFIRMED_SHOULDER_ATTACHMENTS.scourgefemale_hd;
+  const result = await attachShoulderAssets(body, [
+    { side: 'L', name: 'left', file: await loadData('shoulder_armor_skybornec60_d_01_l_7751193.glb'), attachment: confirmed.L },
+    { side: 'R', name: 'right', file: await loadData('shoulder_armor_skybornec60_d_01_r.glb'), attachment: confirmed.R }
+  ]);
+  const { json } = await readGlb(result.blob);
+  const parents = new Map();
+  json.nodes.forEach((node, index) => (node.children || []).forEach((child) => parents.set(child, index)));
+  for (const side of ['L', 'R']) {
+    const nodeIndex = json.nodes.findIndex((node) => node.name === `WFArmory_${side}_Shoulder_${side === 'L' ? 'left' : 'right'}`);
+    assert.equal(json.nodes[parents.get(nodeIndex)].name, `bone_Arm${side}`);
+    const matrix = json.nodes[nodeIndex].matrix;
+    assert.deepEqual(round(matrix.slice(0, 11)), [0.65, 0, 0, 0, 0, 0.65, 0, 0, 0, 0, 0.65]);
+    let world = matrix.slice(12, 15);
+    for (let current = parents.get(nodeIndex); current !== undefined; current = parents.get(current)) {
+      world = world.map((value, i) => value + (json.nodes[current].translation || [0, 0, 0])[i]);
+    }
+    world.forEach((value, i) => assert.ok(Math.abs(value - confirmed[side].position[i]) < 1e-6));
   }
 });
