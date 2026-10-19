@@ -30,27 +30,29 @@
 - `attachShoulderAssets(body, [{ side, file, attachment }])` требует `attachment.position` и ставит меш под `bone_Shoulder{L|R}` с матрицей `inv(bone_world) × model_world × T(position)`. Размер предмета не меняется (линейная часть — единичная), и меш следует за костью плеча. Без подтверждённых данных функция выдаёт ошибку.
 - `attachDetachedShoulders(file, attachments)` работает по той же формуле. Без данных ничего не двигает и возвращает `missing: ['L','R']`.
 - `wf-armory-shoulder-fix.js` (браузерный шим) повторяет ту же логику.
-- Тесты: 9 из 9 проходят, включая реальные GLB из архива. Проверяется, что пересчитанное смещение совпадает с заданным до 1e-5 и что масштаб равен 1.
+- Тесты: 10 из 10 проходят, включая реальные GLB из архива. Проверяется, что пересчитанное смещение совпадает с заданным до 1e-5 и что масштаб равен 1.
 
 `wf-wow-model-viewer.js` и Release не изменялись.
 
 ## 3. Что нужно выгрузить из wow.export
 
-**GLB персонажа с надетым предметом не поможет.** В версии 0.2.19 GLB-экспорт пишет вложенные предметы без точки крепления (см. п. 1). Нужен OBJ:
+Точка крепления наплечника (M2 attachment 5/6) — свойство модели персонажа, а не предмета. Поэтому подходит **любой наплечник** из списка wow.export: Skyborne в списке может не быть, если в загруженном клиенте нет этого предмета в ItemSparse.
 
-1. **Characters**: `scourgefemale_hd`, тот же облик, надеть этот наплечник.
-   - Анимация: **нет / bind pose**, не Stand.
+1. **Characters**: `scourgefemale_hd`, тот же облик. Надеть любой наплечник из списка.
+   - Анимация: **No Animation**.
    - Модель в превью не вращать.
-   - Настройка `chrExportApplyPose` включена (по умолчанию).
-   - **Export → OBJ**. Нужен только `.obj`, `.mtl` и текстуры не нужны.
-2. Item ID надетого предмета (для сверки с группой `_Item<ID>_` в OBJ).
-3. Если для этой расы wow.export подставит другую модель, OBJ не совпадёт с приложенными GLB и функция об этом сообщит. Тогда нужны GLB именно тех моделей, что надеты в эталоне.
-4. По желанию, для проверки кости крепления: сырые `scourgefemale_hd.m2` и `.skel` (Export → raw). Из них читается таблица attachments (id, bone, position). Сейчас, как и раньше, принято, что ID 5/6 крепятся к `bone_ShoulderR/L`, но в GLB это не видно.
+   - Галочка **Apply pose** включена (по умолчанию).
+2. **Export → OBJ**. Нужен только `.obj`.
+3. Не меняя ничего, **Export → GLB** того же персонажа. В нём wow.export кладёт наплечники в их собственных координатах — это и есть данные для сравнения с OBJ.
+4. По желанию, для проверки кости крепления: сырые `scourgefemale_hd.m2` и `.skel` (Export → Raw). Сейчас, как и раньше, принято, что ID 5/6 крепятся к `bone_ShoulderR/L`.
+
+GLB персонажа без OBJ не поможет: в версии 0.2.19 GLB-экспорт пишет наплечники без точки крепления (см. п. 1).
 
 ## Использование
 
 ```js
-const att = await WFArmoryImport.deriveShoulderAttachments(objText, { L: leftGlb, R: rightGlb });
+const att = await WFArmoryImport.deriveShoulderAttachments(objText, { character: characterWithShouldersGlb });
+// или { L: leftItemGlb, R: rightItemGlb }, если OBJ выгружен именно с этими моделями
 // att.L = { itemId, position: [x, y, z], scale: 1, rms, vertexCount }
 const { blob } = await WFArmoryImport.attachShoulderAssets(bodyGlb, [
   { side: 'L', file: leftGlb, attachment: att.L },

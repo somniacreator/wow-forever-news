@@ -351,10 +351,10 @@ function readAccessor(document, binary, index) {
   return out;
 }
 
-/** Item-space vertices (in index order) actually used by the item GLB, with their first UV set. */
-function itemVertices({ document, binary }) {
+/** Item-space vertices (in index order) used by the given meshes of a GLB, with their first UV set. */
+function itemVertices({ document, binary }, meshIndices = document.meshes.map((_, index) => index)) {
   const used = new Map();
-  for (const primitive of document.meshes.flatMap((mesh) => mesh.primitives || [])) {
+  for (const primitive of meshIndices.flatMap((index) => document.meshes[index]?.primitives || [])) {
     const positions = readAccessor(document, binary, primitive.attributes.POSITION);
     const uvs = primitive.attributes.TEXCOORD_0 !== undefined ? readAccessor(document, binary, primitive.attributes.TEXCOORD_0) : [];
     const indices = primitive.indices !== undefined ? readAccessor(document, binary, primitive.indices) : positions.map((_, i) => i);
@@ -468,20 +468,33 @@ function fitAttachment(local, reference, side) {
 
 /**
  * Derives the confirmed shoulder attachment points from a wow.export character
- * OBJ exported in the rest pose with the shoulders equipped, by matching it
- * against the separately exported item GLBs. Returns
- * { L: { itemId, position, scale, rms, vertexCount }, R: ... } in GLB
- * coordinates (character model space).
+ * OBJ exported in the rest pose with shoulders equipped. The item-space
+ * geometry comes either from the separately exported item GLBs ({ L, R }) or
+ * from a GLB export of the same character with the same shoulders
+ * ({ character }), where wow.export writes them unposed at the origin. The
+ * attachment point belongs to the character model, so any shoulder item can
+ * be used. Returns { L: { itemId, position, scale, rms, vertexCount }, R: ... }
+ * in GLB coordinates (character model space).
  */
-export async function deriveShoulderAttachments(objText, itemFiles) {
+export async function deriveShoulderAttachments(objText, sources) {
   const groups = objShoulderGroups(objText);
+  const character = sources?.character ? await readGlb(sources.character) : null;
   const result = {};
   for (const side of ['L', 'R']) {
-    if (!itemFiles?.[side]) continue;
+    let local;
+    if (character) {
+      const meshes = character.document.nodes
+        .filter((node) => node.mesh !== undefined && node.skin === undefined && shoulderSide(node.name) === side)
+        .map((node) => node.mesh);
+      if (!meshes.length) continue;
+      local = itemVertices(character, meshes);
+    } else if (sources?.[side]) {
+      local = itemVertices(await readGlb(sources[side]));
+    } else continue;
     if (!groups[side]) throw Error(`В эталонном OBJ нет группы наплечника ${side === 'L' ? 'Shoulder (L)' : 'Shoulder (R)'}`);
-    const local = itemVertices(await readGlb(itemFiles[side]));
     result[side] = { itemId: groups[side].itemId, ...fitAttachment(local, groups[side].vertices, side) };
   }
+  if (!Object.keys(result).length) throw Error('Не найдено ни одного наплечника для сравнения с OBJ');
   return result;
 }
 

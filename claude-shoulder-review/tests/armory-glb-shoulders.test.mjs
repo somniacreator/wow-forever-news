@@ -127,7 +127,7 @@ test('the browser-loaded shoulder fix matches the module', async () => {
 });
 
 /** A minimal one-mesh item GLB in the wow.export layout (POSITION, TEXCOORD_0, uint16 indices). */
-function makeItemGlb(positions, uvs, indices) {
+function makeItemGlb(positions, uvs, indices, nodes = [{ mesh: 0 }]) {
   const posBytes = new Float32Array(positions.flat());
   const uvBytes = new Float32Array(uvs.flat());
   const indexBytes = new Uint16Array(indices);
@@ -149,7 +149,7 @@ function makeItemGlb(positions, uvs, indices) {
       { bufferView: 2, componentType: 5123, count: indices.length, type: 'SCALAR' }
     ],
     meshes: [{ primitives: [{ attributes: { POSITION: 0, TEXCOORD_0: 1 }, indices: 2 }] }],
-    nodes: [{ mesh: 0 }]
+    nodes
   }, binary);
 }
 
@@ -185,6 +185,19 @@ test('attachment points are derived exactly from a rest-pose wow.export OBJ', as
   assert.deepEqual(round(result.L.position).map((n) => Math.round(n * 1e5) / 1e5), offset);
   assert.ok(Math.abs(result.L.scale - 1) < 1e-5);
   assert.ok(result.L.rms < 1e-6);
+});
+
+test('attachment points can use any shoulder from a GLB export of the same character', async () => {
+  const offset = [0.01, 1.62, 0.16];
+  const obj = makeReferenceObj([{ side: 'R', itemId: 456, ...cube, transform: (p) => p.map((v, i) => v + offset[i]) }]);
+  const character = makeItemGlb(cube.positions, cube.uvs, cube.indices, [
+    { name: 'scourgefemale_hd_Geoset0', mesh: 0, skin: 0 },
+    { name: 'Shoulder (R)_Item456_0', mesh: 0 }
+  ]);
+  const result = await deriveShoulderAttachments(obj, { character });
+  assert.deepEqual(Object.keys(result), ['R']);
+  assert.equal(result.R.itemId, 456);
+  assert.deepEqual(result.R.position.map((n) => Math.round(n * 1e5) / 1e5), offset);
 });
 
 test('a scaled or posed reference is rejected instead of being baked in', async () => {
