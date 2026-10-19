@@ -2,6 +2,14 @@
   "format": "wow-forever-news-v2",
   "news": [
     {
+      "id": "173",
+      "title": "⚠️ Исправление к предыдущему сообщению:",
+      "date": "2026-10-19",
+      "body": "⚠️ Исправление к предыдущему сообщению:\nТекущий релиз WoW Forever Mini App — Release 1.1.75, готовится Draft 1.1.75.36. В публикации ошибочно указан Release 1.1.74. Остальная информация остаётся без изменений.",
+      "source": "https://t.me/WoW_Forever_RU/173",
+      "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/173.jpg"
+    },
+    {
       "id": "171",
       "title": "🛡️ ОРУЖЕЙНАЯ WoW FOREVER: проверяем 3D-экипировку",
       "date": "2026-10-19",
