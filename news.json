@@ -2,6 +2,14 @@
   "format": "wow-forever-news-v2",
   "news": [
     {
+      "id": "167",
+      "title": "📦 База предметов WoW Forever пока неполная",
+      "date": "2026-10-19",
+      "body": "📦 База предметов WoW Forever пока неполная\n\nBlizzard скрыла данные о части предметов: их характеристики станут известны, когда кто-то впервые получит их на сервере. Поэтому сейчас датамайнеры видят не всё.\n---\nПосле релиза мы будем регулярно сверять базу с новыми данными клиента и подтверждёнными находками, чтобы постепенно пополнять справочник WoW Forever Mini App.",
+      "source": "https://t.me/WoW_Forever_RU/167",
+      "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/167.jpg"
+    },
+    {
       "id": "163",
       "title": "⚔️ WOW FOREVER MINI APP — ВЫШЕЛ RELEASE 1.1.74",
       "date": "2026-10-16",
