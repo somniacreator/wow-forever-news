@@ -200,6 +200,16 @@ test('attachment points can use any shoulder from a GLB export of the same chara
   assert.deepEqual(result.R.position.map((n) => Math.round(n * 1e5) / 1e5), offset);
 });
 
+test('the preview rotation wow.export adds to attached items in OBJ is stripped', async () => {
+  const offset = [0.01, 1.62, -0.16];
+  const yaw = -95 * Math.PI / 180;
+  const rotate = ([x, y, z]) => [Math.cos(yaw) * x + Math.sin(yaw) * z, y, -Math.sin(yaw) * x + Math.cos(yaw) * z];
+  const obj = makeReferenceObj([{ side: 'L', itemId: 123, ...cube, transform: (p) => rotate(p.map((v, i) => v + offset[i])) }]);
+  const result = await deriveShoulderAttachments(obj, { L: makeItemGlb(cube.positions, cube.uvs, cube.indices) });
+  assert.ok(Math.abs(result.L.previewRotation + 95) < 1e-3);
+  assert.deepEqual(result.L.position.map((n) => Math.round(n * 1e5) / 1e5), offset);
+});
+
 test('a scaled or posed reference is rejected instead of being baked in', async () => {
   const obj = makeReferenceObj([{ side: 'L', itemId: 123, ...cube, transform: (p) => p.map((v) => v * 0.8) }]);
   await assert.rejects(deriveShoulderAttachments(obj, { L: makeItemGlb(cube.positions, cube.uvs, cube.indices) }), /не в позе покоя \(масштаб 0\.8000/);

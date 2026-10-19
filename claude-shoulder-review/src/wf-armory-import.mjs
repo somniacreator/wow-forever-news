@@ -417,8 +417,11 @@ function solveLinear4(matrix, rhs) {
 
 /**
  * Least-squares affine fit reference = A * local + t over corresponding
- * vertices. Accepts only a pure translation (rest pose): any rotation or scale
- * means the reference was exported in an animated pose and cannot be used.
+ * vertices. In the rest pose wow.export's OBJ gives attached items
+ * Ry(preview rotation) * T(attachment) (getAttachmentTransform applies the
+ * preview's model_matrix, the baked body does not), so a rotation about the
+ * vertical axis is stripped and reported. Any other rotation or scale means an
+ * animation was applied and the reference cannot be used.
  */
 function fitAttachment(local, reference, side) {
   if (local.length !== reference.length || local.length < 4) {
@@ -460,10 +463,18 @@ function fitAttachment(local, reference, side) {
   const scale = Math.cbrt(determinant);
   const deviation = Math.max(...linear.flatMap((row, r) => row.map((value, c) => Math.abs(value - (r === c ? 1 : 0)))));
   if (rms > 1e-3) throw Error(`Сторона ${side}: вершины не совпадают ни при какой аффинной трансформации (RMS ${rms.toFixed(5)})`);
-  if (deviation > 1e-3) {
-    throw Error(`Сторона ${side}: эталон экспортирован не в позе покоя (масштаб ${scale.toFixed(4)}, отклонение матрицы ${deviation.toFixed(4)}). Экспортируйте OBJ без анимации.`);
+  if (deviation <= 1e-3) return { position, scale, rms, vertexCount: local.length, previewRotation: 0 };
+  const yaw = Math.atan2(linear[0][2], linear[0][0]);
+  const cos = Math.cos(yaw), sin = Math.sin(yaw);
+  const yawOnly = [[cos, 0, sin], [0, 1, 0], [-sin, 0, cos]];
+  const yawDeviation = Math.max(...linear.flatMap((row, r) => row.map((value, c) => Math.abs(value - yawOnly[r][c]))));
+  if (yawDeviation > 1e-3) {
+    throw Error(`Сторона ${side}: эталон экспортирован не в позе покоя (масштаб ${scale.toFixed(4)}, отклонение матрицы ${deviation.toFixed(4)}). Экспортируйте OBJ с No Animation.`);
   }
-  return { position, scale, rms, vertexCount: local.length };
+  return {
+    position: [cos * position[0] - sin * position[2], position[1], sin * position[0] + cos * position[2]],
+    scale, rms, vertexCount: local.length, previewRotation: yaw * 180 / Math.PI
+  };
 }
 
 /**
