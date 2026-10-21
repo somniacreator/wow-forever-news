@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.6"
+local VERSION = "0.1.7"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -38,6 +38,30 @@ local function itemQuality(link)
   -- GetItemInfo is empty until the item is cached; the link itself carries
   -- the quality as |cnIQ<n>: on WoW Forever 1.60.x clients.
   return tonumber(quality) or tonumber(tostring(link):match("|cnIQ(%d+)"))
+end
+
+-- Transmogrification of an equipped slot: the item whose appearance is shown,
+-- or hidden = true. Uses the client's C_Transmog API when it exists; on a
+-- client without it the slot simply carries no look.
+local function transmogLook(slotId, itemId)
+  if not C_Transmog or type(C_Transmog.GetSlotVisualInfo) ~= "function" then return nil end
+  local location
+  if TransmogUtil and TransmogUtil.GetTransmogLocation and Enum and Enum.TransmogType and Enum.TransmogModification then
+    location = safeCall(TransmogUtil.GetTransmogLocation, slotId, Enum.TransmogType.Appearance, Enum.TransmogModification.Main)
+  end
+  local _, baseSource, appliedSource, hidden
+  if location then
+    baseSource, _, appliedSource, _, _, _, _, hidden = safeCall(C_Transmog.GetSlotVisualInfo, location)
+  else
+    baseSource, _, appliedSource, _, _, _, _, hidden = safeCall(C_Transmog.GetSlotVisualInfo, slotId, LE_TRANSMOG_TYPE_APPEARANCE or 0)
+  end
+  if hidden == true then return nil, true end
+  appliedSource = tonumber(appliedSource)
+  if not appliedSource or appliedSource <= 0 or appliedSource == tonumber(baseSource) then return nil end
+  local info = C_TransmogCollection and safeCall(C_TransmogCollection.GetSourceInfo, appliedSource)
+  local lookId = type(info) == "table" and tonumber(info.itemID) or nil
+  if lookId and lookId > 0 and lookId ~= itemId then return lookId end
+  return nil
 end
 
 local function round(value, digits)
@@ -148,12 +172,15 @@ local function capture()
     local link = safeCall(GetInventoryItemLink, "player", slot.id)
     local texture = safeCall(GetInventoryItemTexture, "player", slot.id)
     if id or link then
+      local lookId, lookHidden = transmogLook(slot.id, id)
       equipment[slot.key] = {
         slot_id = slot.id,
         item_id = id,
         item_link = link,
         quality = itemQuality(link),
         icon = texture,
+        look_item_id = lookId,
+        look_hidden = lookHidden or nil,
       }
     end
   end
@@ -264,7 +291,8 @@ local function toJson(value)
 end
 
 -- Telegram link for the Armory mini app, the format src/wf-characters.mjs
--- reads: "WFA1_" + base64url(UTF-8 "1;raceId;unitSex;CLASS;level;name;realm;slot.item,...").
+-- reads: "WFA1_" + base64url(UTF-8 "1;raceId;unitSex;CLASS;level;name;realm;slot.item[.look],...");
+-- look is the transmog item ID or "x" for a hidden slot.
 -- Telegram allows 512 characters of [A-Za-z0-9_-] in startapp, so the link
 -- carries appearance and gear only; stats travel in the JSON.
 local LINK_PREFIX = "https://t.me/WoWForeverRUBot?startapp="
@@ -298,7 +326,12 @@ local function telegramLink(data)
   for _, slot in ipairs(slots) do
     local item = data.equipment and data.equipment[slot.key]
     local id = item and tonumber(item.item_id)
-    if id and id > 0 then gear[#gear + 1] = slot.id .. "." .. id end
+    if id and id > 0 then
+      local entry = slot.id .. "." .. id
+      if item.look_hidden then entry = entry .. ".x"
+      elseif tonumber(item.look_item_id) then entry = entry .. "." .. tonumber(item.look_item_id) end
+      gear[#gear + 1] = entry
+    end
   end
   local fields = { "1", race, tonumber(c.gender_id) or 2, clean(c.class_token), tonumber(c.level) or "", clean(c.name), clean(c.realm), table.concat(gear, ",") }
   local code = "WFA1_" .. base64url(table.concat(fields, ";"))
@@ -392,7 +425,7 @@ local function getExportFrame()
     if mode == "link" then
       local url, problem = telegramLink(data)
       self.text = url or ""
-      self.hint:SetText(url and "Ссылка выделена: нажмите Ctrl+C и отправьте её в любой чат Telegram. По нажатию откроется Оружейная с этим персонажем (внешность и экипировка; характеристики — только в JSON)."
+      self.hint:SetText(url and "Ссылка выделена: нажмите Ctrl+C и отправьте её в любой чат Telegram. По нажатию откроется Оружейная с этим персонажем (раса, экипировка и трансмог; характеристики — только в JSON)."
         or ("Не удалось собрать ссылку: " .. tostring(problem) .. "."))
     else
       self.text = toJson(data)
