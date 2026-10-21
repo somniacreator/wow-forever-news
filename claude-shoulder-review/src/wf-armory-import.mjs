@@ -84,9 +84,11 @@ export function normalizeArmoryImport(data) {
       class: c.class_token || c.class || '',
       realm: c.realm || '', region: 'eu', level: c.level ?? null,
       faction: c.faction_name || c.faction || '', gear: { items },
+      stats: data.stats && typeof data.stats === 'object' && !Array.isArray(data.stats) ? data.stats : null,
       __wfaArmoryPilot: {
         character: c, equipment: data.equipment,
-        client: data.client || {}, build: data.client?.build || ''
+        client: data.client || {}, build: data.client?.build || '',
+        addonVersion: data.addon_version || ''
       }
     };
   }

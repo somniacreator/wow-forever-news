@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.1"
+local VERSION = "0.1.2"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -27,15 +27,104 @@ local slots = {
 
 local function safeCall(fn, ...)
   if type(fn) ~= "function" then return nil end
-  local ok, a, b, c, d = pcall(fn, ...)
-  if ok then return a, b, c, d end
-  return nil
+  local results = { pcall(fn, ...) }
+  if not results[1] then return nil end
+  return unpack(results, 2, math.max(2, table.maxn(results)))
 end
 
 local function itemQuality(link)
   if not link then return nil end
   local _, _, quality = safeCall(GetItemInfo, link)
   return tonumber(quality)
+end
+
+local function round(value, digits)
+  value = tonumber(value)
+  if not value then return nil end
+  local factor = 10 ^ (digits or 2)
+  return math.floor(value * factor + 0.5) / factor
+end
+
+-- Values exactly as the client reports them; anything the API does not
+-- provide stays nil instead of being estimated.
+local PRIMARY_STATS = { "strength", "agility", "stamina", "intellect", "spirit" }
+local SPELL_SCHOOLS = { "physical", "holy", "fire", "nature", "frost", "shadow", "arcane" }
+
+local function captureStats()
+  local stats = {}
+
+  stats.health_max = tonumber(safeCall(UnitHealthMax, "player"))
+  local _, powerToken = safeCall(UnitPowerType, "player")
+  stats.power_type = powerToken
+  stats.power_max = tonumber(safeCall(UnitPowerMax, "player"))
+
+  stats.primary = {}
+  for index, key in ipairs(PRIMARY_STATS) do
+    local base, effective, positive, negative = safeCall(UnitStat, "player", index)
+    if base or effective then
+      stats.primary[key] = { base = base, effective = effective, bonus = positive, penalty = negative }
+    end
+  end
+
+  local armorBase, armorEffective, _, armorPositive, armorNegative = safeCall(UnitArmor, "player")
+  if armorBase or armorEffective then
+    stats.armor = { base = armorBase, effective = armorEffective, bonus = armorPositive, penalty = armorNegative }
+  end
+
+  local apBase, apPositive, apNegative = safeCall(UnitAttackPower, "player")
+  local minDamage, maxDamage, minOffhand, maxOffhand = safeCall(UnitDamage, "player")
+  local mainSpeed, offSpeed = safeCall(UnitAttackSpeed, "player")
+  stats.melee = {
+    attack_power = apBase and { base = apBase, bonus = apPositive, penalty = apNegative } or nil,
+    crit_chance = round(safeCall(GetCritChance)),
+    hit_bonus = round(safeCall(GetHitModifier)),
+    damage_min = round(minDamage, 1),
+    damage_max = round(maxDamage, 1),
+    offhand_damage_min = round(minOffhand, 1),
+    offhand_damage_max = round(maxOffhand, 1),
+    speed = round(mainSpeed),
+    offhand_speed = round(offSpeed),
+  }
+
+  local rapBase, rapPositive, rapNegative = safeCall(UnitRangedAttackPower, "player")
+  local rangedSpeed, rangedMin, rangedMax = safeCall(UnitRangedDamage, "player")
+  stats.ranged = {
+    attack_power = rapBase and { base = rapBase, bonus = rapPositive, penalty = rapNegative } or nil,
+    crit_chance = round(safeCall(GetRangedCritChance)),
+    damage_min = round(rangedMin, 1),
+    damage_max = round(rangedMax, 1),
+    speed = round(rangedSpeed),
+  }
+
+  stats.spell = {
+    bonus_healing = tonumber(safeCall(GetSpellBonusHealing)),
+    hit_bonus = round(safeCall(GetSpellHitModifier)),
+    crit_chance = {},
+    bonus_damage = {},
+  }
+  for school = 2, #SPELL_SCHOOLS do
+    local key = SPELL_SCHOOLS[school]
+    stats.spell.crit_chance[key] = round(safeCall(GetSpellCritChance, school))
+    stats.spell.bonus_damage[key] = tonumber(safeCall(GetSpellBonusDamage, school))
+  end
+  local baseRegen, castingRegen = safeCall(GetManaRegen)
+  stats.spell.mana_regen = baseRegen and { base = round(baseRegen), casting = round(castingRegen) } or nil
+
+  stats.defense = {
+    dodge_chance = round(safeCall(GetDodgeChance)),
+    parry_chance = round(safeCall(GetParryChance)),
+    block_chance = round(safeCall(GetBlockChance)),
+  }
+
+  stats.resistances = {}
+  for school = 2, #SPELL_SCHOOLS do
+    local base, total = safeCall(UnitResistance, "player", school - 1)
+    if base or total then
+      stats.resistances[SPELL_SCHOOLS[school]] = { base = base, total = total }
+    end
+  end
+
+  return stats
 end
 
 local function capture()
@@ -90,6 +179,7 @@ local function capture()
       faction_name = factionName,
     },
     equipment = equipment,
+    stats = captureStats(),
   }
   WFAArmoryExportDB.updated_at = WFAArmoryExportDB.latest.captured_at
   return equipment
@@ -111,6 +201,12 @@ local function report()
   local identity = (character.name or "персонаж") .. " · " .. (character.race or "раса неизвестна") .. " · " .. (character.class or "класс неизвестен")
   print("WFA Armory Exporter: сохранены данные " .. identity)
   print("Экипировка: " .. countEquipment(equipment) .. " предметов; build клиента: " .. tostring(build) .. ".")
+  local stats = data and data.stats or {}
+  local primary = stats.primary or {}
+  local function effective(key) return primary[key] and primary[key].effective or "?" end
+  print("Характеристики: сила " .. tostring(effective("strength")) .. ", ловкость " .. tostring(effective("agility")) ..
+    ", выносливость " .. tostring(effective("stamina")) .. ", интеллект " .. tostring(effective("intellect")) ..
+    ", дух " .. tostring(effective("spirit")) .. "; броня " .. tostring(stats.armor and stats.armor.effective or "?") .. ".")
   print("Выполните /reload или выйдите из игры, чтобы записать SavedVariables на диск.")
   print("Файл будет в WTF\\Account\\...\\SavedVariables\\WFA_Armory_Exporter.lua")
 end
@@ -140,6 +236,7 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 frame:RegisterEvent("UNIT_INVENTORY_CHANGED")
+frame:RegisterEvent("PLAYER_LOGOUT")
 frame:SetScript("OnEvent", function(_, event, unit)
   if event == "UNIT_INVENTORY_CHANGED" and unit ~= "player" then return end
   capture()
