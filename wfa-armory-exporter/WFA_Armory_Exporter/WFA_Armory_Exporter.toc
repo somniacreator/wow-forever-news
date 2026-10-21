@@ -2,6 +2,6 @@
 ## Title: WoW Forever Armory Exporter
 ## Notes: Сохраняет данные персонажа, экипировки и характеристик для Оружейной WoW Forever.
 ## Author: WoW Forever
-## Version: 0.1.2
+## Version: 0.1.3
 ## SavedVariables: WFAArmoryExportDB
 WFA_Armory_Exporter.lua

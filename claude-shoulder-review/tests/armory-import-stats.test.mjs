@@ -29,3 +29,15 @@ test('exports from addon 0.1.1 without stats still import', () => {
   assert.equal(profile.stats, null);
   assert.equal(profile.name, 'Мертвая');
 });
+
+test('item quality falls back to the WoW Forever link colour code', () => {
+  const profile = normalizeArmoryImport(exportV1({
+    equipment: {
+      chest: { slot_id: 5, item_id: 57, item_link: "|cnIQ0:|Hitem:57::::::::1:1490::75:::::::|h[Acolyte's Robe]|h|r" },
+      feet: { slot_id: 8, item_id: 59, item_link: "|cnIQ1:|Hitem:59::::::::1:1490::75:::::::|h[Acolyte's Shoes]|h|r", quality: 2 }
+    }
+  }));
+  assert.equal(profile.gear.items.chest.quality, 0);
+  assert.equal(profile.gear.items.chest.name, "Acolyte's Robe");
+  assert.equal(profile.gear.items.feet.quality, 2, 'explicit quality wins');
+});

@@ -55,6 +55,12 @@ function normalizeWowExportCharacter(data) {
   };
 }
 
+/** WoW Forever 1.60.x item links carry the quality as |cnIQ<n>:. */
+function linkQuality(link) {
+  const quality = String(link || '').match(/\|cnIQ(\d+)/)?.[1];
+  return quality === undefined ? null : Number(quality);
+}
+
 export function normalizeArmoryImport(data) {
   if (data && typeof data === 'object' && !Array.isArray(data) &&
       Number(data.version) === 2 && Number(data.race_id) > 0 &&
@@ -74,7 +80,7 @@ export function normalizeArmoryImport(data) {
         item_id: Number(item.item_id), slot_id: item.slot_id ?? null,
         icon: item.icon ?? item.icon_url ?? '',
         name: item.name ?? linkedName,
-        quality: item.quality ?? item.item_quality ?? null,
+        quality: item.quality ?? item.item_quality ?? linkQuality(item.item_link),
         item_link: item.item_link ?? ''
       };
     }

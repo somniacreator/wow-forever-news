@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.2"
+local VERSION = "0.1.3"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -35,7 +35,9 @@ end
 local function itemQuality(link)
   if not link then return nil end
   local _, _, quality = safeCall(GetItemInfo, link)
-  return tonumber(quality)
+  -- GetItemInfo is empty until the item is cached; the link itself carries
+  -- the quality as |cnIQ<n>: on WoW Forever 1.60.x clients.
+  return tonumber(quality) or tonumber(tostring(link):match("|cnIQ(%d+)"))
 end
 
 local function round(value, digits)
