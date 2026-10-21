@@ -1,0 +1,7 @@
+## Interface: 16001
+## Title: WoW Forever Armory Exporter
+## Notes: Сохраняет данные персонажа и экипировки для проверки 3D-Оружейной.
+## Author: WoW Forever
+## Version: 0.1.1
+## SavedVariables: WFAArmoryExportDB
+WFA_Armory_Exporter.lua
