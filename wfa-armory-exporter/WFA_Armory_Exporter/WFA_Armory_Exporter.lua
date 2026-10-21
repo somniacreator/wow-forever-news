@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.3"
+local VERSION = "0.1.4"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -130,6 +130,12 @@ local function captureStats()
 end
 
 local function capture()
+  -- While the world is loading or being torn down (logout, /reload) the
+  -- client reports an empty inventory and zero stats; keep the last good
+  -- snapshot instead of overwriting it with that.
+  local healthMax = tonumber(safeCall(UnitHealthMax, "player"))
+  if not healthMax or healthMax <= 0 then return nil end
+
   local localizedRace, raceToken = safeCall(UnitRace, "player")
   local localizedClass, classToken = safeCall(UnitClass, "player")
   local faction, factionName = safeCall(UnitFactionGroup, "player")
@@ -197,6 +203,10 @@ end
 
 local function report()
   local equipment = capture()
+  if not equipment then
+    print("WFA Armory Exporter: данные персонажа ещё не загружены, снимок не изменён. Повторите /wfa export через пару секунд.")
+    return
+  end
   local data = WFAArmoryExportDB.latest
   local character = data and data.character or {}
   local build = data and data.client and data.client.build or "не определён"
@@ -238,7 +248,6 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 frame:RegisterEvent("UNIT_INVENTORY_CHANGED")
-frame:RegisterEvent("PLAYER_LOGOUT")
 frame:SetScript("OnEvent", function(_, event, unit)
   if event == "UNIT_INVENTORY_CHANGED" and unit ~= "player" then return end
   capture()
