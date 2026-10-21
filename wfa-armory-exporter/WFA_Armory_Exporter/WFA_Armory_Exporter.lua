@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.4"
+local VERSION = "0.1.5"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -204,8 +204,8 @@ end
 local function report()
   local equipment = capture()
   if not equipment then
-    print("WFA Armory Exporter: данные персонажа ещё не загружены, снимок не изменён. Повторите /wfa export через пару секунд.")
-    return
+    print("WFA Armory Exporter: данные персонажа ещё не загружены, снимок не изменён. Повторите через пару секунд.")
+    return false
   end
   local data = WFAArmoryExportDB.latest
   local character = data and data.character or {}
@@ -219,8 +219,211 @@ local function report()
   print("Характеристики: сила " .. tostring(effective("strength")) .. ", ловкость " .. tostring(effective("agility")) ..
     ", выносливость " .. tostring(effective("stamina")) .. ", интеллект " .. tostring(effective("intellect")) ..
     ", дух " .. tostring(effective("spirit")) .. "; броня " .. tostring(stats.armor and stats.armor.effective or "?") .. ".")
-  print("Выполните /reload или выйдите из игры, чтобы записать SavedVariables на диск.")
-  print("Файл будет в WTF\\Account\\...\\SavedVariables\\WFA_Armory_Exporter.lua")
+  return true
+end
+
+-- JSON for the Armory's "импорт JSON профиля" field. Keys are sorted so the
+-- same character always gives the same text; "|" is written as | so the
+-- game's edit box shows item links as plain text instead of parsing them.
+local function jsonString(value)
+  return '"' .. tostring(value):gsub('[%c"\\|]', function(char)
+    if char == '"' then return '\\"' end
+    if char == "\\" then return "\\\\" end
+    if char == "\n" then return "\\n" end
+    if char == "\r" then return "\\r" end
+    if char == "\t" then return "\\t" end
+    return string.format("\\u%04x", string.byte(char))
+  end) .. '"'
+end
+
+local function toJson(value)
+  local kind = type(value)
+  if kind == "table" then
+    local keys = {}
+    for key in pairs(value) do keys[#keys + 1] = tostring(key) end
+    table.sort(keys)
+    local parts = {}
+    for _, key in ipairs(keys) do
+      local item = value[key]
+      if item == nil then item = value[tonumber(key)] end
+      local encoded = toJson(item)
+      if encoded then parts[#parts + 1] = jsonString(key) .. ":" .. encoded end
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+  elseif kind == "string" then
+    return jsonString(value)
+  elseif kind == "number" then
+    if value ~= value or value == math.huge or value == -math.huge then return "null" end
+    if value == math.floor(value) and math.abs(value) < 2 ^ 53 then return string.format("%d", value) end
+    return string.format("%.14g", value)
+  elseif kind == "boolean" then
+    return value and "true" or "false"
+  end
+  return nil
+end
+
+local exportFrame
+
+local function createButton(parent, text, width)
+  local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  button:SetSize(width, 24)
+  button:SetText(text)
+  return button
+end
+
+local function getExportFrame()
+  if exportFrame then return exportFrame end
+  local ok, frame = pcall(CreateFrame, "Frame", "WFAArmoryExportFrame", UIParent, "BasicFrameTemplateWithInset")
+  if not ok or not frame then
+    frame = CreateFrame("Frame", "WFAArmoryExportFrame", UIParent)
+    local background = frame:CreateTexture(nil, "BACKGROUND")
+    background:SetAllPoints()
+    background:SetColorTexture(0.03, 0.07, 0.12, 0.95)
+  end
+  frame:SetSize(520, 360)
+  frame:SetPoint("CENTER")
+  frame:SetFrameStrata("DIALOG")
+  frame:SetMovable(true)
+  frame:EnableMouse(true)
+  frame:RegisterForDrag("LeftButton")
+  frame:SetScript("OnDragStart", frame.StartMoving)
+  frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+  frame:SetClampedToScreen(true)
+  tinsert(UISpecialFrames, "WFAArmoryExportFrame")
+
+  local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  title:SetPoint("TOP", 0, -6)
+  title:SetText("WFA Armory Exporter " .. VERSION)
+
+  local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  hint:SetPoint("TOPLEFT", 14, -30)
+  hint:SetPoint("TOPRIGHT", -14, -30)
+  hint:SetJustifyH("LEFT")
+  hint:SetText("Текст уже выделен: нажмите Ctrl+C и вставьте его в Оружейной в поле «Дополнительно: импорт JSON профиля».")
+  frame.hint = hint
+
+  local scroll = CreateFrame("ScrollFrame", "WFAArmoryExportScroll", frame, "UIPanelScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT", 14, -62)
+  scroll:SetPoint("BOTTOMRIGHT", -34, 44)
+
+  local edit = CreateFrame("EditBox", nil, scroll)
+  edit:SetMultiLine(true)
+  edit:SetAutoFocus(false)
+  edit:SetFontObject(ChatFontNormal)
+  edit:SetWidth(460)
+  edit:SetMaxLetters(0)
+  edit:SetScript("OnEscapePressed", function() frame:Hide() end)
+  -- Read-only: any typing restores the export so a stray key cannot spoil it.
+  edit:SetScript("OnTextChanged", function(self, userInput)
+    if userInput and frame.json then self:SetText(frame.json); self:HighlightText() end
+  end)
+  edit:SetScript("OnMouseUp", function(self) self:HighlightText() end)
+  scroll:SetScrollChild(edit)
+  frame.edit = edit
+
+  local selectAll = createButton(frame, "Выделить всё", 140)
+  selectAll:SetPoint("BOTTOMLEFT", 14, 12)
+  selectAll:SetScript("OnClick", function() edit:SetFocus(); edit:HighlightText() end)
+
+  local save = createButton(frame, "Сохранить в файл (/reload)", 220)
+  save:SetPoint("BOTTOM", 40, 12)
+  save:SetScript("OnClick", function() ReloadUI() end)
+
+  local close = createButton(frame, "Закрыть", 90)
+  close:SetPoint("BOTTOMRIGHT", -14, 12)
+  close:SetScript("OnClick", function() frame:Hide() end)
+
+  frame:Hide()
+  exportFrame = frame
+  return frame
+end
+
+local function showExport()
+  if not report() then return end
+  local frame = getExportFrame()
+  frame.json = toJson(WFAArmoryExportDB.latest)
+  frame:Show()
+  frame.edit:SetText(frame.json)
+  frame.edit:SetCursorPosition(0)
+  frame.edit:SetFocus()
+  frame.edit:HighlightText()
+end
+
+local function showSummary()
+  local data = WFAArmoryExportDB.latest
+  if not data then
+    print("WFA Armory Exporter: нет сохранённого снимка. Нажмите кнопку у мини-карты или введите /wfa export.")
+    return
+  end
+  local c = data.character or {}
+  print("WFA: " .. tostring(c.name or "?") .. " / " .. tostring(c.race or "?") .. " / " .. tostring(c.class or "?"))
+  print("Экипировка: " .. countEquipment(data.equipment) .. " предметов.")
+end
+
+-- Minimap button: left click exports and opens the JSON window, right click
+-- prints a summary, dragging moves it around the minimap (angle is saved).
+local minimapButton
+
+local function placeMinimapButton()
+  local angle = math.rad(tonumber(WFAArmoryExportDB.minimap_angle) or 210)
+  local radius = (Minimap:GetWidth() / 2) + 10
+  minimapButton:ClearAllPoints()
+  minimapButton:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+end
+
+local function dragMinimapButton()
+  local x, y = GetCursorPosition()
+  local scale = Minimap:GetEffectiveScale()
+  local cx, cy = Minimap:GetCenter()
+  local angle = math.deg(math.atan2(y / scale - cy, x / scale - cx))
+  WFAArmoryExportDB.minimap_angle = math.floor(angle * 10 + 0.5) / 10
+  placeMinimapButton()
+end
+
+local function createMinimapButton()
+  if minimapButton or not Minimap then return end
+  local button = CreateFrame("Button", "WFAArmoryMinimapButton", Minimap)
+  button:SetSize(31, 31)
+  button:SetFrameStrata("MEDIUM")
+  button:SetFrameLevel(8)
+  button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  button:RegisterForDrag("LeftButton")
+  button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+
+  local background = button:CreateTexture(nil, "BACKGROUND")
+  background:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+  background:SetSize(20, 20)
+  background:SetPoint("TOPLEFT", 7, -5)
+
+  local icon = button:CreateTexture(nil, "ARTWORK")
+  icon:SetTexture("Interface\\Icons\\INV_Chest_Chain_05")
+  icon:SetSize(17, 17)
+  icon:SetPoint("TOPLEFT", 7, -6)
+  icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
+
+  local border = button:CreateTexture(nil, "OVERLAY")
+  border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+  border:SetSize(53, 53)
+  border:SetPoint("TOPLEFT")
+
+  button:SetScript("OnClick", function(_, mouseButton)
+    if mouseButton == "RightButton" then showSummary() else showExport() end
+  end)
+  button:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", dragMinimapButton) end)
+  button:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
+  button:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    GameTooltip:AddLine("WFA Armory Exporter " .. VERSION)
+    GameTooltip:AddLine("Левая кнопка: выгрузить персонажа для Оружейной", 1, 1, 1)
+    GameTooltip:AddLine("Правая кнопка: краткая сводка в чат", 1, 1, 1)
+    GameTooltip:AddLine("Перетащите, чтобы переместить кнопку", 0.7, 0.7, 0.7)
+    GameTooltip:Show()
+  end)
+  button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+  minimapButton = button
+  if WFAArmoryExportDB.minimap_hidden then button:Hide() end
+  placeMinimapButton()
 end
 
 SLASH_WFAARMORYEXPORTER1 = "/wfa"
@@ -229,18 +432,15 @@ SlashCmdList = SlashCmdList or {}
 SlashCmdList.WFAARMORYEXPORTER = function(message)
   local command = (message or ""):lower():match("^%s*(%S*)")
   if command == "" or command == "export" then
-    report()
+    showExport()
   elseif command == "show" then
-    local data = WFAArmoryExportDB.latest
-    if not data then
-      print("WFA Armory Exporter: нет сохранённого снимка. Выполните /wfa export.")
-    else
-      local c = data.character or {}
-      print("WFA: " .. tostring(c.name or "?") .. " / " .. tostring(c.race or "?") .. " / " .. tostring(c.class or "?"))
-      print("Экипировка: " .. countEquipment(data.equipment) .. " предметов.")
-    end
+    showSummary()
+  elseif command == "button" then
+    WFAArmoryExportDB.minimap_hidden = not WFAArmoryExportDB.minimap_hidden
+    if minimapButton then minimapButton:SetShown(not WFAArmoryExportDB.minimap_hidden) end
+    print("WFA Armory Exporter: кнопка у мини-карты " .. (WFAArmoryExportDB.minimap_hidden and "скрыта" or "показана") .. ".")
   else
-    print("Команды: /wfa export — обновить снимок; /wfa show — показать краткую сводку.")
+    print("Команды: /wfa export — выгрузить персонажа (окно с JSON); /wfa show — краткая сводка; /wfa button — скрыть или показать кнопку у мини-карты.")
   end
 end
 
@@ -252,6 +452,7 @@ frame:SetScript("OnEvent", function(_, event, unit)
   if event == "UNIT_INVENTORY_CHANGED" and unit ~= "player" then return end
   capture()
   if event == "PLAYER_LOGIN" then
-    print("WFA Armory Exporter готов. Введите /wfa export, затем /reload.")
+    createMinimapButton()
+    print("WFA Armory Exporter " .. VERSION .. " готов. Нажмите кнопку у мини-карты, чтобы выгрузить персонажа для Оружейной.")
   end
 end)
