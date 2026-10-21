@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.5"
+local VERSION = "0.1.6"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -136,7 +136,7 @@ local function capture()
   local healthMax = tonumber(safeCall(UnitHealthMax, "player"))
   if not healthMax or healthMax <= 0 then return nil end
 
-  local localizedRace, raceToken = safeCall(UnitRace, "player")
+  local localizedRace, raceToken, raceId = safeCall(UnitRace, "player")
   local localizedClass, classToken = safeCall(UnitClass, "player")
   local faction, factionName = safeCall(UnitFactionGroup, "player")
   local version, build, buildDate, interface = safeCall(GetBuildInfo)
@@ -180,6 +180,7 @@ local function capture()
       guid = guid,
       race = localizedRace,
       race_token = raceToken,
+      race_id = tonumber(raceId),
       class = localizedClass,
       class_token = classToken,
       gender_id = gender,
@@ -262,6 +263,49 @@ local function toJson(value)
   return nil
 end
 
+-- Telegram link for the Armory mini app, the format src/wf-characters.mjs
+-- reads: "WFA1_" + base64url(UTF-8 "1;raceId;unitSex;CLASS;level;name;realm;slot.item,...").
+-- Telegram allows 512 characters of [A-Za-z0-9_-] in startapp, so the link
+-- carries appearance and gear only; stats travel in the JSON.
+local LINK_PREFIX = "https://t.me/WoWForeverRUBot?startapp="
+local START_PARAM_LIMIT = 512
+local RACE_IDS = { Human = 1, Orc = 2, Dwarf = 3, NightElf = 4, Scourge = 5, Tauren = 6, Gnome = 7, Troll = 8 }
+local BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+local function base64url(text)
+  local out = {}
+  for i = 1, #text, 3 do
+    local a, b, c = string.byte(text, i, i + 2)
+    local n = a * 65536 + (b or 0) * 256 + (c or 0)
+    local chars = 2 + (b and 1 or 0) + (c and 1 or 0)
+    for k = 1, chars do
+      local index = math.floor(n / 2 ^ (6 * (4 - k))) % 64
+      out[#out + 1] = BASE64URL:sub(index + 1, index + 1)
+    end
+  end
+  return table.concat(out)
+end
+
+local function clean(value)
+  return (tostring(value or ""):gsub("[;,%c]", " "))
+end
+
+local function telegramLink(data)
+  local c = data and data.character or {}
+  local race = tonumber(c.race_id) or RACE_IDS[tostring(c.race_token or ""):gsub("%s", "")]
+  if not race then return nil, "раса персонажа не определена" end
+  local gear = {}
+  for _, slot in ipairs(slots) do
+    local item = data.equipment and data.equipment[slot.key]
+    local id = item and tonumber(item.item_id)
+    if id and id > 0 then gear[#gear + 1] = slot.id .. "." .. id end
+  end
+  local fields = { "1", race, tonumber(c.gender_id) or 2, clean(c.class_token), tonumber(c.level) or "", clean(c.name), clean(c.realm), table.concat(gear, ",") }
+  local code = "WFA1_" .. base64url(table.concat(fields, ";"))
+  if #code > START_PARAM_LIMIT then return nil, "данные не помещаются в ссылку Telegram" end
+  return LINK_PREFIX .. code
+end
+
 local exportFrame
 
 local function createButton(parent, text, width)
@@ -280,7 +324,7 @@ local function getExportFrame()
     background:SetAllPoints()
     background:SetColorTexture(0.03, 0.07, 0.12, 0.95)
   end
-  frame:SetSize(520, 360)
+  frame:SetSize(560, 360)
   frame:SetPoint("CENTER")
   frame:SetFrameStrata("DIALOG")
   frame:SetMovable(true)
@@ -299,7 +343,6 @@ local function getExportFrame()
   hint:SetPoint("TOPLEFT", 14, -30)
   hint:SetPoint("TOPRIGHT", -14, -30)
   hint:SetJustifyH("LEFT")
-  hint:SetText("Текст уже выделен: нажмите Ctrl+C и вставьте его в Оружейной в поле «Дополнительно: импорт JSON профиля».")
   frame.hint = hint
 
   local scroll = CreateFrame("ScrollFrame", "WFAArmoryExportScroll", frame, "UIPanelScrollFrameTemplate")
@@ -310,43 +353,68 @@ local function getExportFrame()
   edit:SetMultiLine(true)
   edit:SetAutoFocus(false)
   edit:SetFontObject(ChatFontNormal)
-  edit:SetWidth(460)
+  edit:SetWidth(500)
   edit:SetMaxLetters(0)
   edit:SetScript("OnEscapePressed", function() frame:Hide() end)
   -- Read-only: any typing restores the export so a stray key cannot spoil it.
   edit:SetScript("OnTextChanged", function(self, userInput)
-    if userInput and frame.json then self:SetText(frame.json); self:HighlightText() end
+    if userInput and frame.text then self:SetText(frame.text); self:HighlightText() end
   end)
   edit:SetScript("OnMouseUp", function(self) self:HighlightText() end)
   scroll:SetScrollChild(edit)
   frame.edit = edit
 
-  local selectAll = createButton(frame, "Выделить всё", 140)
-  selectAll:SetPoint("BOTTOMLEFT", 14, 12)
-  selectAll:SetScript("OnClick", function() edit:SetFocus(); edit:HighlightText() end)
+  local json = createButton(frame, "JSON для сайта", 130)
+  json:SetPoint("BOTTOMLEFT", 14, 12)
+  json:SetScript("OnClick", function() frame:ShowMode("json") end)
 
-  local save = createButton(frame, "Сохранить в файл (/reload)", 220)
-  save:SetPoint("BOTTOM", 40, 12)
+  local link = createButton(frame, "Ссылка для Telegram", 160)
+  link:SetPoint("LEFT", json, "RIGHT", 6, 0)
+  link:SetScript("OnClick", function() frame:ShowMode("link") end)
+
+  local save = createButton(frame, "Сохранить файл", 130)
+  save:SetPoint("LEFT", link, "RIGHT", 6, 0)
   save:SetScript("OnClick", function() ReloadUI() end)
+  save:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:AddLine("Перезагрузить интерфейс (/reload), чтобы игра записала")
+    GameTooltip:AddLine("WTF\\...\\SavedVariables\\WFA_Armory_Exporter.lua", 1, 1, 1)
+    GameTooltip:Show()
+  end)
+  save:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-  local close = createButton(frame, "Закрыть", 90)
+  local close = createButton(frame, "Закрыть", 80)
   close:SetPoint("BOTTOMRIGHT", -14, 12)
   close:SetScript("OnClick", function() frame:Hide() end)
+
+  function frame:ShowMode(mode)
+    local data = WFAArmoryExportDB.latest
+    if mode == "link" then
+      local url, problem = telegramLink(data)
+      self.text = url or ""
+      self.hint:SetText(url and "Ссылка выделена: нажмите Ctrl+C и отправьте её в любой чат Telegram. По нажатию откроется Оружейная с этим персонажем (внешность и экипировка; характеристики — только в JSON)."
+        or ("Не удалось собрать ссылку: " .. tostring(problem) .. "."))
+    else
+      self.text = toJson(data)
+      self.hint:SetText("JSON выделен: нажмите Ctrl+C и вставьте его в Оружейной в поле «Дополнительно: импорт JSON профиля» → «Показать данные из JSON».")
+    end
+    json:SetEnabled(mode == "link")
+    link:SetEnabled(mode ~= "link")
+    self:Show()
+    self.edit:SetText(self.text)
+    self.edit:SetCursorPosition(0)
+    self.edit:SetFocus()
+    self.edit:HighlightText()
+  end
 
   frame:Hide()
   exportFrame = frame
   return frame
 end
 
-local function showExport()
+local function showExport(mode)
   if not report() then return end
-  local frame = getExportFrame()
-  frame.json = toJson(WFAArmoryExportDB.latest)
-  frame:Show()
-  frame.edit:SetText(frame.json)
-  frame.edit:SetCursorPosition(0)
-  frame.edit:SetFocus()
-  frame.edit:HighlightText()
+  getExportFrame():ShowMode(mode or "json")
 end
 
 local function showSummary()
@@ -407,14 +475,17 @@ local function createMinimapButton()
   border:SetPoint("TOPLEFT")
 
   button:SetScript("OnClick", function(_, mouseButton)
-    if mouseButton == "RightButton" then showSummary() else showExport() end
+    if mouseButton == "RightButton" then showSummary()
+    elseif IsShiftKeyDown() then showExport("link")
+    else showExport("json") end
   end)
   button:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", dragMinimapButton) end)
   button:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
   button:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     GameTooltip:AddLine("WFA Armory Exporter " .. VERSION)
-    GameTooltip:AddLine("Левая кнопка: выгрузить персонажа для Оружейной", 1, 1, 1)
+    GameTooltip:AddLine("Левая кнопка: JSON для Оружейной (с характеристиками)", 1, 1, 1)
+    GameTooltip:AddLine("Shift + левая кнопка: ссылка для Telegram", 1, 1, 1)
     GameTooltip:AddLine("Правая кнопка: краткая сводка в чат", 1, 1, 1)
     GameTooltip:AddLine("Перетащите, чтобы переместить кнопку", 0.7, 0.7, 0.7)
     GameTooltip:Show()
@@ -431,8 +502,10 @@ SLASH_WFAARMORYEXPORTER2 = "/wfexport"
 SlashCmdList = SlashCmdList or {}
 SlashCmdList.WFAARMORYEXPORTER = function(message)
   local command = (message or ""):lower():match("^%s*(%S*)")
-  if command == "" or command == "export" then
-    showExport()
+  if command == "" or command == "export" or command == "json" then
+    showExport("json")
+  elseif command == "link" then
+    showExport("link")
   elseif command == "show" then
     showSummary()
   elseif command == "button" then
@@ -440,7 +513,7 @@ SlashCmdList.WFAARMORYEXPORTER = function(message)
     if minimapButton then minimapButton:SetShown(not WFAArmoryExportDB.minimap_hidden) end
     print("WFA Armory Exporter: кнопка у мини-карты " .. (WFAArmoryExportDB.minimap_hidden and "скрыта" or "показана") .. ".")
   else
-    print("Команды: /wfa export — выгрузить персонажа (окно с JSON); /wfa show — краткая сводка; /wfa button — скрыть или показать кнопку у мини-карты.")
+    print("Команды: /wfa — JSON для Оружейной; /wfa link — ссылка для Telegram; /wfa show — краткая сводка; /wfa button — скрыть или показать кнопку у мини-карты.")
   end
 end
 
