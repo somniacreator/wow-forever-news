@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.10"
+local VERSION = "0.1.11"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -234,6 +234,13 @@ local function talentBuildString(talents)
   return table.concat(parts, "-")
 end
 
+-- Optional parts of the snapshot: an API the client lacks must not stop the export.
+local function optional(fn)
+  local ok, value = pcall(fn)
+  if ok then return value end
+  return nil
+end
+
 local function capture()
   -- While the world is loading or being torn down (logout, /reload) the
   -- client reports an empty inventory and zero stats; keep the last good
@@ -253,7 +260,8 @@ local function capture()
     local link = safeCall(GetInventoryItemLink, "player", slot.id)
     local texture = safeCall(GetInventoryItemTexture, "player", slot.id)
     if id or link then
-      local lookId, lookHidden = transmogLook(slot.id, id)
+      local okLook, lookId, lookHidden = pcall(transmogLook, slot.id, id)
+      if not okLook then lookId, lookHidden = nil, nil end
       equipment[slot.key] = {
         slot_id = slot.id,
         item_id = id,
@@ -296,8 +304,8 @@ local function capture()
       faction_name = factionName,
     },
     equipment = equipment,
-    stats = captureStats(),
-    talents = captureTalents(),
+    stats = optional(captureStats),
+    talents = optional(captureTalents),
     money = tonumber(safeCall(GetMoney)),
   }
   WFAArmoryExportDB.updated_at = WFAArmoryExportDB.latest.captured_at
@@ -313,7 +321,11 @@ local function countEquipment(equipment)
 end
 
 local function report()
-  local equipment = capture()
+  local ok, equipment = pcall(capture)
+  if not ok then
+    print("WFA Armory Exporter: ошибка при сборе данных — " .. tostring(equipment))
+    return false
+  end
   if not equipment then
     print("WFA Armory Exporter: данные персонажа ещё не загружены, снимок не изменён. Повторите через пару секунд.")
     return false
@@ -713,6 +725,7 @@ SlashCmdList.WFAARMORYEXPORTER = function(message)
   elseif command == "show" then
     showSummary()
   elseif command == "button" then
+    if not minimapButton then pcall(createMinimapButton) end
     WFAArmoryExportDB.minimap_hidden = not WFAArmoryExportDB.minimap_hidden
     if minimapButton then minimapButton:SetShown(not WFAArmoryExportDB.minimap_hidden) end
     print("WFA Armory Exporter: кнопка у мини-карты " .. (WFAArmoryExportDB.minimap_hidden and "скрыта" or "показана") .. ".")
@@ -729,11 +742,23 @@ frame:RegisterEvent("UNIT_INVENTORY_CHANGED")
 for _, event in ipairs({ "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE", "ACTIVE_TALENT_GROUP_CHANGED" }) do
   pcall(frame.RegisterEvent, frame, event)
 end
+-- The minimap button is created before anything else, so a capture error can
+-- never take it away; such an error is reported once in chat instead.
+local captureErrorShown = false
+local function safeCapture()
+  local ok, err = pcall(capture)
+  if not ok and not captureErrorShown then
+    captureErrorShown = true
+    print("WFA Armory Exporter: ошибка при сборе данных — " .. tostring(err))
+  end
+  return ok
+end
+
 frame:SetScript("OnEvent", function(_, event, unit)
   if event == "UNIT_INVENTORY_CHANGED" and unit ~= "player" then return end
-  capture()
   if event == "PLAYER_LOGIN" then
-    createMinimapButton()
-    print("WFA Armory Exporter " .. VERSION .. " готов. Нажмите кнопку у мини-карты, чтобы выгрузить персонажа для Оружейной.")
+    pcall(createMinimapButton)
+    print("WFA Armory Exporter " .. VERSION .. " готов. Нажмите кнопку у мини-карты, чтобы выгрузить персонажа для Оружейной. Нет кнопки — введите /wfa button.")
   end
+  safeCapture()
 end)
