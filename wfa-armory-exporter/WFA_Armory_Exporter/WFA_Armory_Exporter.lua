@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.8"
+local VERSION = "0.1.9"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -453,14 +453,23 @@ end
 
 local function getExportFrame()
   if exportFrame then return exportFrame end
-  local ok, frame = pcall(CreateFrame, "Frame", "WFAArmoryExportFrame", UIParent, "BasicFrameTemplateWithInset")
-  if not ok or not frame then
-    frame = CreateFrame("Frame", "WFAArmoryExportFrame", UIParent)
+  -- Styled like the Armory character window: brown panel, gold frame, round
+  -- portrait with the level, gold name, class line and red buttons.
+  local frame = CreateFrame("Frame", "WFAArmoryExportFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+  if frame.SetBackdrop then
+    frame:SetBackdrop({
+      bgFile = "Interface\\Buttons\\WHITE8X8",
+      edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Gold-Border",
+      tile = false, edgeSize = 32,
+      insets = { left = 8, right = 8, top = 8, bottom = 8 },
+    })
+    frame:SetBackdropColor(0.16, 0.11, 0.06, 0.97)
+  else
     local background = frame:CreateTexture(nil, "BACKGROUND")
     background:SetAllPoints()
-    background:SetColorTexture(0.03, 0.07, 0.12, 0.95)
+    background:SetColorTexture(0.16, 0.11, 0.06, 0.97)
   end
-  frame:SetSize(560, 360)
+  frame:SetSize(560, 380)
   frame:SetPoint("CENTER")
   frame:SetFrameStrata("DIALOG")
   frame:SetMovable(true)
@@ -471,19 +480,69 @@ local function getExportFrame()
   frame:SetClampedToScreen(true)
   tinsert(UISpecialFrames, "WFAArmoryExportFrame")
 
-  local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  title:SetPoint("TOP", 0, -6)
+  -- Warm light at the top of the panel, like the Armory window gradient.
+  local glow = frame:CreateTexture(nil, "BORDER")
+  glow:SetPoint("TOPLEFT", 10, -10)
+  glow:SetPoint("TOPRIGHT", -10, -10)
+  glow:SetHeight(90)
+  glow:SetColorTexture(1, 1, 1, 1)
+  if glow.SetGradient and CreateColor then
+    pcall(glow.SetGradient, glow, "VERTICAL", CreateColor(0.16, 0.11, 0.06, 0), CreateColor(0.42, 0.29, 0.13, 0.55))
+  elseif glow.SetGradientAlpha then
+    pcall(glow.SetGradientAlpha, glow, "VERTICAL", 0.16, 0.11, 0.06, 0, 0.42, 0.29, 0.13, 0.55)
+  else
+    glow:SetColorTexture(0.42, 0.29, 0.13, 0.25)
+  end
+
+  local portrait = frame:CreateTexture(nil, "ARTWORK")
+  portrait:SetSize(54, 54)
+  portrait:SetPoint("TOPLEFT", 18, -16)
+  frame.portrait = portrait
+  local ring = frame:CreateTexture(nil, "OVERLAY")
+  ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+  ring:SetSize(100, 100)
+  ring:SetPoint("TOPLEFT", portrait, "TOPLEFT", -4, 3)
+  local level = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  level:SetPoint("CENTER", portrait, "BOTTOMRIGHT", -4, 4)
+  frame.level = level
+
+  local name = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+  name:SetPoint("TOPLEFT", portrait, "TOPRIGHT", 14, -4)
+  name:SetTextColor(1, 0.82, 0.42)
+  frame.name = name
+  local info = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  info:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -4)
+  info:SetTextColor(0.9, 0.84, 0.7)
+  frame.info = info
+
+  local closeX = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+  closeX:SetPoint("TOPRIGHT", -6, -6)
+  closeX:SetScript("OnClick", function() frame:Hide() end)
+
+  local title = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  title:SetPoint("TOPRIGHT", -40, -18)
   title:SetText("WFA Armory Exporter " .. VERSION)
 
+  local line = frame:CreateTexture(nil, "ARTWORK")
+  line:SetPoint("TOPLEFT", 16, -80)
+  line:SetPoint("TOPRIGHT", -16, -80)
+  line:SetHeight(2)
+  line:SetColorTexture(0.79, 0.6, 0.29, 0.9)
+
   local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  hint:SetPoint("TOPLEFT", 14, -30)
-  hint:SetPoint("TOPRIGHT", -14, -30)
+  hint:SetPoint("TOPLEFT", 18, -88)
+  hint:SetPoint("TOPRIGHT", -18, -88)
   hint:SetJustifyH("LEFT")
   frame.hint = hint
 
   local scroll = CreateFrame("ScrollFrame", "WFAArmoryExportScroll", frame, "UIPanelScrollFrameTemplate")
-  scroll:SetPoint("TOPLEFT", 14, -62)
-  scroll:SetPoint("BOTTOMRIGHT", -34, 44)
+  scroll:SetPoint("TOPLEFT", 18, -122)
+  scroll:SetPoint("BOTTOMRIGHT", -38, 48)
+  -- Dark inset behind the text, like the Armory panels.
+  local inset = frame:CreateTexture(nil, "BORDER")
+  inset:SetPoint("TOPLEFT", scroll, "TOPLEFT", -4, 4)
+  inset:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 26, -4)
+  inset:SetColorTexture(0.05, 0.035, 0.02, 0.9)
 
   local edit = CreateFrame("EditBox", nil, scroll)
   edit:SetMultiLine(true)
@@ -501,7 +560,7 @@ local function getExportFrame()
   frame.edit = edit
 
   local json = createButton(frame, "JSON для сайта", 130)
-  json:SetPoint("BOTTOMLEFT", 14, 12)
+  json:SetPoint("BOTTOMLEFT", 18, 16)
   json:SetScript("OnClick", function() frame:ShowMode("json") end)
 
   local link = createButton(frame, "Ссылка для Telegram", 160)
@@ -520,11 +579,19 @@ local function getExportFrame()
   save:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
   local close = createButton(frame, "Закрыть", 80)
-  close:SetPoint("BOTTOMRIGHT", -14, 12)
+  close:SetPoint("BOTTOMRIGHT", -18, 16)
   close:SetScript("OnClick", function() frame:Hide() end)
 
   function frame:ShowMode(mode)
     local data = WFAArmoryExportDB.latest
+    local c = data and data.character or {}
+    if SetPortraitTexture then pcall(SetPortraitTexture, self.portrait, "player") end
+    if self.portrait.SetMask then pcall(self.portrait.SetMask, self.portrait, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+    self.name:SetText(tostring(c.name or "?"))
+    self.level:SetText(tostring(c.level or ""))
+    local classColor = RAID_CLASS_COLORS and c.class_token and RAID_CLASS_COLORS[c.class_token]
+    local className = classColor and string.format("|cff%02x%02x%02x%s|r", math.floor(classColor.r * 255), math.floor(classColor.g * 255), math.floor(classColor.b * 255), tostring(c.class or "")) or tostring(c.class or "")
+    self.info:SetText(className .. " · " .. tostring(c.race or "") .. " · " .. tostring(c.realm or ""))
     if mode == "link" then
       local url, problem = telegramLink(data)
       self.text = url or ""
@@ -532,7 +599,7 @@ local function getExportFrame()
         or ("Не удалось собрать ссылку: " .. tostring(problem) .. "."))
     else
       self.text = toJson(data)
-      self.hint:SetText("JSON выделен: нажмите Ctrl+C и вставьте его в Оружейной в поле «Дополнительно: импорт JSON профиля» → «Показать данные из JSON».")
+      self.hint:SetText("JSON выделен: нажмите Ctrl+C и вставьте его в Оружейной в блок «Загрузить персонажа из игры» → «Показать персонажа».")
     end
     json:SetEnabled(mode == "link")
     link:SetEnabled(mode ~= "link")
