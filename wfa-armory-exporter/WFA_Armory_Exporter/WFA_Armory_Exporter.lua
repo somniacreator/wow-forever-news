@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.7"
+local VERSION = "0.1.8"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -153,6 +153,87 @@ local function captureStats()
   return stats
 end
 
+-- Talents exactly as the client reports them: every tab with its points and
+-- every talent with tier, column and rank, for each talent group (dual spec)
+-- the client knows. Missing API pieces simply leave fields out.
+local function talentTabInfo(tab, group)
+  local r = { safeCall(GetTalentTabInfo, tab, false, false, group) }
+  if type(r[1]) == "string" then
+    -- Classic Era: name, iconTexture, pointsSpent, fileName
+    return r[1], r[2], tonumber(r[3]), r[4]
+  elseif type(r[2]) == "string" then
+    -- Later Classic clients: id, name, description, iconTexture, pointsSpent, background
+    return r[2], r[4], tonumber(r[5]), r[6]
+  end
+  return nil
+end
+
+local function captureTalentGroup(group)
+  local tabs = {}
+  local numTabs = tonumber(safeCall(GetNumTalentTabs, false, false)) or 0
+  for tab = 1, numTabs do
+    local name, icon, points, background = talentTabInfo(tab, group)
+    local talents = {}
+    local numTalents = tonumber(safeCall(GetNumTalents, tab, false, false)) or 0
+    for index = 1, numTalents do
+      local talentName, talentIcon, tier, column, rank, maxRank = safeCall(GetTalentInfo, tab, index, false, false, group)
+      if talentName then
+        talents[#talents + 1] = {
+          index = index, name = talentName, icon = talentIcon,
+          tier = tonumber(tier), column = tonumber(column),
+          rank = tonumber(rank), max_rank = tonumber(maxRank),
+        }
+      end
+    end
+    tabs[#tabs + 1] = { name = name, icon = icon, points = points, background = background, talents = talents }
+  end
+  return tabs
+end
+
+local function captureTalents()
+  if type(GetNumTalentTabs) ~= "function" or type(GetTalentInfo) ~= "function" then return nil end
+  local groups = {}
+  local numGroups = tonumber(safeCall(GetNumTalentGroups, false, false)) or 1
+  for group = 1, math.max(1, numGroups) do
+    local tabs = captureTalentGroup(group)
+    if #tabs > 0 then groups[#groups + 1] = { group = group, tabs = tabs } end
+  end
+  if #groups == 0 then return nil end
+  return {
+    active_group = tonumber(safeCall(GetActiveTalentGroup, false, false)) or 1,
+    unspent = tonumber(safeCall(UnitCharacterPoints, "player")),
+    groups = groups,
+  }
+end
+
+local function activeTalentTabs(talents)
+  if not talents then return nil end
+  for _, group in ipairs(talents.groups or {}) do
+    if group.group == talents.active_group then return group.tabs end
+  end
+  return talents.groups and talents.groups[1] and talents.groups[1].tabs
+end
+
+-- Compact build for the Telegram link: ranks per tab in tier/column order,
+-- trailing zeros dropped, tabs joined with "-" (e.g. "5002-05-").
+local function talentBuildString(talents)
+  local tabs = activeTalentTabs(talents)
+  if not tabs then return nil end
+  local parts = {}
+  for i, tab in ipairs(tabs) do
+    local list = {}
+    for _, talent in ipairs(tab.talents or {}) do list[#list + 1] = talent end
+    table.sort(list, function(a, b)
+      if (a.tier or 0) ~= (b.tier or 0) then return (a.tier or 0) < (b.tier or 0) end
+      return (a.column or 0) < (b.column or 0)
+    end)
+    local ranks = {}
+    for _, talent in ipairs(list) do ranks[#ranks + 1] = tostring(math.min(9, talent.rank or 0)) end
+    parts[i] = (table.concat(ranks):gsub("0+$", ""))
+  end
+  return table.concat(parts, "-")
+end
+
 local function capture()
   -- While the world is loading or being torn down (logout, /reload) the
   -- client reports an empty inventory and zero stats; keep the last good
@@ -216,6 +297,7 @@ local function capture()
     },
     equipment = equipment,
     stats = captureStats(),
+    talents = captureTalents(),
   }
   WFAArmoryExportDB.updated_at = WFAArmoryExportDB.latest.captured_at
   return equipment
@@ -247,6 +329,14 @@ local function report()
   print("Характеристики: сила " .. tostring(effective("strength")) .. ", ловкость " .. tostring(effective("agility")) ..
     ", выносливость " .. tostring(effective("stamina")) .. ", интеллект " .. tostring(effective("intellect")) ..
     ", дух " .. tostring(effective("spirit")) .. "; броня " .. tostring(stats.armor and stats.armor.effective or "?") .. ".")
+  local tabs = activeTalentTabs(data and data.talents)
+  if tabs then
+    local spent = {}
+    for _, tab in ipairs(tabs) do spent[#spent + 1] = tostring(tab.name or "?") .. " " .. tostring(tab.points or 0) end
+    print("Таланты: " .. table.concat(spent, " / ") .. ".")
+  else
+    print("Таланты: клиент не передал данные.")
+  end
   return true
 end
 
@@ -267,6 +357,18 @@ end
 local function toJson(value)
   local kind = type(value)
   if kind == "table" then
+    local count = #value
+    if count > 0 then
+      local isArray = true
+      for key in pairs(value) do
+        if type(key) ~= "number" or key < 1 or key > count or key % 1 ~= 0 then isArray = false break end
+      end
+      if isArray then
+        local items = {}
+        for i = 1, count do items[i] = toJson(value[i]) or "null" end
+        return "[" .. table.concat(items, ",") .. "]"
+      end
+    end
     local keys = {}
     for key in pairs(value) do keys[#keys + 1] = tostring(key) end
     table.sort(keys)
@@ -292,7 +394,8 @@ end
 
 -- Telegram link for the Armory mini app, the format src/wf-characters.mjs
 -- reads: "WFA1_" + base64url(UTF-8 "1;raceId;unitSex;CLASS;level;name;realm;slot.item[.look],...");
--- look is the transmog item ID or "x" for a hidden slot.
+-- look is the transmog item ID or "x" for a hidden slot. A 9th field carries the
+-- active talent build ("5002-05-"); older app versions ignore it.
 -- Telegram allows 512 characters of [A-Za-z0-9_-] in startapp, so the link
 -- carries appearance and gear only; stats travel in the JSON.
 local LINK_PREFIX = "https://t.me/WoWForeverRUBot?startapp="
@@ -333,7 +436,7 @@ local function telegramLink(data)
       gear[#gear + 1] = entry
     end
   end
-  local fields = { "1", race, tonumber(c.gender_id) or 2, clean(c.class_token), tonumber(c.level) or "", clean(c.name), clean(c.realm), table.concat(gear, ",") }
+  local fields = { "1", race, tonumber(c.gender_id) or 2, clean(c.class_token), tonumber(c.level) or "", clean(c.name), clean(c.realm), table.concat(gear, ","), talentBuildString(data.talents) or "" }
   local code = "WFA1_" .. base64url(table.concat(fields, ";"))
   if #code > START_PARAM_LIMIT then return nil, "данные не помещаются в ссылку Telegram" end
   return LINK_PREFIX .. code
@@ -554,6 +657,10 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 frame:RegisterEvent("UNIT_INVENTORY_CHANGED")
+-- Talent events differ between clients; an unknown name must not break loading.
+for _, event in ipairs({ "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE", "ACTIVE_TALENT_GROUP_CHANGED" }) do
+  pcall(frame.RegisterEvent, frame, event)
+end
 frame:SetScript("OnEvent", function(_, event, unit)
   if event == "UNIT_INVENTORY_CHANGED" and unit ~= "player" then return end
   capture()
