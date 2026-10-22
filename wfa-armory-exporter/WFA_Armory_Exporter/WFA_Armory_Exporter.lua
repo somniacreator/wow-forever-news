@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.13"
+local VERSION = "0.1.14"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -72,6 +72,24 @@ local function hexColor(r, g, b)
   return string.format("%02x%02x%02x", math.floor((r or 1) * 255 + 0.5), math.floor((g or 1) * 255 + 0.5), math.floor((b or 1) * 255 + 0.5))
 end
 
+local function isSellPriceLine(text)
+  local label = type(SELL_PRICE) == "string" and SELL_PRICE ~= "" and SELL_PRICE or "Цена продажи"
+  return text:sub(1, #label) == label or text:find("^Цена продажи") ~= nil or text:find("^Sell Price") ~= nil
+end
+
+local function sellPriceText(slotId)
+  local link = GetInventoryItemLink and GetInventoryItemLink("player", slotId)
+  if not link or not GetItemInfo then return nil end
+  local price = tonumber((select(11, GetItemInfo(link))))
+  if not price or price <= 0 then return nil end
+  local gold, silver, copper = math.floor(price / 10000), math.floor(price % 10000 / 100), price % 100
+  local parts = {}
+  if gold > 0 then parts[#parts + 1] = gold .. " з." end
+  if silver > 0 then parts[#parts + 1] = silver .. " с." end
+  if copper > 0 then parts[#parts + 1] = copper .. " м." end
+  return table.concat(parts, " ")
+end
+
 local function itemTooltip(slotId)
   if not scanTip then
     scanTip = CreateFrame("GameTooltip", "WFAArmoryScanTooltip", nil, "GameTooltipTemplate")
@@ -89,6 +107,10 @@ local function itemTooltip(slotId)
       local isWarning = r and r > 0.9 and g < 0.2 and b < 0.2
       if not isWarning then
         local rightText = right and right:IsShown() and right:GetText() or nil
+        -- The sell price amount is drawn as coin icons, not text; add it from the item data.
+        if (rightText == nil or rightText == "") and isSellPriceLine(text) then
+          rightText = sellPriceText(slotId)
+        end
         lines[#lines + 1] = { text, hexColor(r, g, b), rightText ~= "" and rightText or nil }
       end
     end
