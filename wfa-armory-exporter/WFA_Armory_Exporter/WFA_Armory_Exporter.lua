@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.14"
+local VERSION = "0.1.15"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -62,6 +62,25 @@ local function transmogLook(slotId, itemId)
   local lookId = type(info) == "table" and tonumber(info.itemID) or nil
   if lookId and lookId > 0 and lookId ~= itemId then return lookId end
   return nil
+end
+
+-- Other items that share the appearance of an item. New WoW Forever items often
+-- reuse an old model; the site finds that model through these item IDs.
+local function sameLookItems(itemId)
+  if not itemId or not C_TransmogCollection or type(C_TransmogCollection.GetItemInfo) ~= "function"
+    or type(C_TransmogCollection.GetAllAppearanceSources) ~= "function" then return nil end
+  local appearanceId = safeCall(C_TransmogCollection.GetItemInfo, itemId)
+  appearanceId = tonumber(appearanceId)
+  if not appearanceId or appearanceId <= 0 then return nil end
+  local sources = safeCall(C_TransmogCollection.GetAllAppearanceSources, appearanceId)
+  if type(sources) ~= "table" then return nil end
+  local ids = {}
+  for _, source in ipairs(sources) do
+    local info = safeCall(C_TransmogCollection.GetSourceInfo, source)
+    local other = type(info) == "table" and tonumber(info.itemID) or nil
+    if other and other > 0 and other ~= itemId and #ids < 8 then ids[#ids + 1] = other end
+  end
+  return #ids > 0 and ids or nil
 end
 
 -- Item tooltip exactly as the game shows it, read from a hidden tooltip:
@@ -326,6 +345,7 @@ local function capture()
         look_item_id = lookId,
         look_hidden = lookHidden or nil,
         tooltip = optional(function() return itemTooltip(slot.id) end),
+        same_look_items = optional(function() return sameLookItems(lookId or id) end),
       }
     end
   end
