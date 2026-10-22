@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.9"
+local VERSION = "0.1.10"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -298,6 +298,7 @@ local function capture()
     equipment = equipment,
     stats = captureStats(),
     talents = captureTalents(),
+    money = tonumber(safeCall(GetMoney)),
   }
   WFAArmoryExportDB.updated_at = WFAArmoryExportDB.latest.captured_at
   return equipment
