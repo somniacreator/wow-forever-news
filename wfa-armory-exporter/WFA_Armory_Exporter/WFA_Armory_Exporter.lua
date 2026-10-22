@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.12"
+local VERSION = "0.1.13"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -62,6 +62,39 @@ local function transmogLook(slotId, itemId)
   local lookId = type(info) == "table" and tonumber(info.itemID) or nil
   if lookId and lookId > 0 and lookId ~= itemId then return lookId end
   return nil
+end
+
+-- Item tooltip exactly as the game shows it, read from a hidden tooltip:
+-- { { left text, "rrggbb", right text or nil }, ... }. Lines that depend on the
+-- moment (red "can't do this now" warnings, the bug-report hint) are skipped.
+local scanTip
+local function hexColor(r, g, b)
+  return string.format("%02x%02x%02x", math.floor((r or 1) * 255 + 0.5), math.floor((g or 1) * 255 + 0.5), math.floor((b or 1) * 255 + 0.5))
+end
+
+local function itemTooltip(slotId)
+  if not scanTip then
+    scanTip = CreateFrame("GameTooltip", "WFAArmoryScanTooltip", nil, "GameTooltipTemplate")
+  end
+  scanTip:SetOwner(WorldFrame or UIParent, "ANCHOR_NONE")
+  scanTip:ClearLines()
+  if not scanTip:SetInventoryItem("player", slotId) and scanTip:NumLines() == 0 then return nil end
+  local lines = {}
+  for i = 2, math.min(scanTip:NumLines() or 0, 40) do
+    local left = _G["WFAArmoryScanTooltipTextLeft" .. i]
+    local right = _G["WFAArmoryScanTooltipTextRight" .. i]
+    local text = left and left:GetText()
+    if text and text ~= "" and not text:find("F6") then
+      local r, g, b = left:GetTextColor()
+      local isWarning = r and r > 0.9 and g < 0.2 and b < 0.2
+      if not isWarning then
+        local rightText = right and right:IsShown() and right:GetText() or nil
+        lines[#lines + 1] = { text, hexColor(r, g, b), rightText ~= "" and rightText or nil }
+      end
+    end
+  end
+  scanTip:Hide()
+  return #lines > 0 and lines or nil
 end
 
 local function round(value, digits)
@@ -270,6 +303,7 @@ local function capture()
         icon = texture,
         look_item_id = lookId,
         look_hidden = lookHidden or nil,
+        tooltip = optional(function() return itemTooltip(slot.id) end),
       }
     end
   end
