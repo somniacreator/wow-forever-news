@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.11"
+local VERSION = "0.1.12"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -725,7 +725,10 @@ SlashCmdList.WFAARMORYEXPORTER = function(message)
   elseif command == "show" then
     showSummary()
   elseif command == "button" then
-    if not minimapButton then pcall(createMinimapButton) end
+    if not minimapButton then
+      local okButton, buttonError = pcall(createMinimapButton)
+      if not okButton then print("WFA Armory Exporter: не удалось создать кнопку у мини-карты — " .. tostring(buttonError)) end
+    end
     WFAArmoryExportDB.minimap_hidden = not WFAArmoryExportDB.minimap_hidden
     if minimapButton then minimapButton:SetShown(not WFAArmoryExportDB.minimap_hidden) end
     print("WFA Armory Exporter: кнопка у мини-карты " .. (WFAArmoryExportDB.minimap_hidden and "скрыта" or "показана") .. ".")
@@ -757,7 +760,8 @@ end
 frame:SetScript("OnEvent", function(_, event, unit)
   if event == "UNIT_INVENTORY_CHANGED" and unit ~= "player" then return end
   if event == "PLAYER_LOGIN" then
-    pcall(createMinimapButton)
+    local okButton, buttonError = pcall(createMinimapButton)
+    if not okButton then print("WFA Armory Exporter: не удалось создать кнопку у мини-карты — " .. tostring(buttonError)) end
     print("WFA Armory Exporter " .. VERSION .. " готов. Нажмите кнопку у мини-карты, чтобы выгрузить персонажа для Оружейной. Нет кнопки — введите /wfa button.")
   end
   safeCapture()
