@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.16"
+local VERSION = "0.1.17"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -364,6 +364,7 @@ local function capture()
         tooltip = optional(function() return itemTooltip(slot.id) end),
         same_look_items = optional(function() return sameLookItems(lookId or id) end),
         item_level = optional(function() return itemLevel(link) end),
+        source = optional(function() return WFAArmorySourceFor and WFAArmorySourceFor(id) end),
       }
     end
   end
