@@ -1,5 +1,5 @@
 local ADDON = "WFA Armory Exporter"
-local VERSION = "0.1.15"
+local VERSION = "0.1.16"
 
 WFAArmoryExportDB = WFAArmoryExportDB or {}
 
@@ -83,6 +83,14 @@ local function sameLookItems(itemId)
   return #ids > 0 and ids or nil
 end
 
+-- Item level of an equipped item as the client reports it.
+local function itemLevel(link)
+  if not link then return nil end
+  local level = GetDetailedItemLevelInfo and tonumber((safeCall(GetDetailedItemLevelInfo, link)))
+  if not level and GetItemInfo then level = tonumber((select(4, safeCall(GetItemInfo, link)))) end
+  return level and level > 0 and level or nil
+end
+
 -- Item tooltip exactly as the game shows it, read from a hidden tooltip:
 -- { { left text, "rrggbb", right text or nil }, ... }. Lines that depend on the
 -- moment (red "can't do this now" warnings, the bug-report hint) are skipped.
@@ -149,6 +157,15 @@ end
 -- provide stays nil instead of being estimated.
 local PRIMARY_STATS = { "strength", "agility", "stamina", "intellect", "spirit" }
 local SPELL_SCHOOLS = { "physical", "holy", "fire", "nature", "frost", "shadow", "arcane" }
+
+-- Average item level from the client (the number the game shows), when the API exists.
+local function averageItemLevel()
+  if type(GetAverageItemLevel) ~= "function" then return nil end
+  local overall, equipped = safeCall(GetAverageItemLevel)
+  overall, equipped = tonumber(overall), tonumber(equipped)
+  if not overall and not equipped then return nil end
+  return { overall = overall and round(overall, 1) or nil, equipped = equipped and round(equipped, 1) or nil }
+end
 
 local function captureStats()
   local stats = {}
@@ -346,6 +363,7 @@ local function capture()
         look_hidden = lookHidden or nil,
         tooltip = optional(function() return itemTooltip(slot.id) end),
         same_look_items = optional(function() return sameLookItems(lookId or id) end),
+        item_level = optional(function() return itemLevel(link) end),
       }
     end
   end
@@ -383,6 +401,7 @@ local function capture()
     stats = optional(captureStats),
     talents = optional(captureTalents),
     money = tonumber(safeCall(GetMoney)),
+    average_item_level = optional(averageItemLevel),
   }
   WFAArmoryExportDB.updated_at = WFAArmoryExportDB.latest.captured_at
   return equipment
