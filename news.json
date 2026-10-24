@@ -2,6 +2,14 @@
   "format": "wow-forever-news-v2",
   "news": [
     {
+      "id": "182",
+      "title": "https://www.curseforge.com/wow/addons/wfa-armory-exporter/preview",
+      "date": "2026-10-24",
+      "body": "https://www.curseforge.com/wow/addons/wfa-armory-exporter/preview\nАддон 👆🏻",
+      "source": "https://t.me/WoW_Forever_RU/182",
+      "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/182.jpg"
+    },
+    {
       "id": "177",
       "title": "⚔️ Оружейная WoW Forever — обновление",
       "date": "2026-10-22",
