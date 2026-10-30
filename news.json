@@ -2,6 +2,14 @@
   "format": "wow-forever-news-v2",
   "news": [
     {
+      "id": "228",
+      "title": "⚙️ WFA Armory Exporter — небольшое, но полезное улучшение!",
+      "date": "2026-10-30",
+      "body": "⚙️ WFA Armory Exporter — небольшое, но полезное улучшение!\n\nНаши гоблины-инженеры сделали перенос персонажа в ⚔️ Оружейную ещё удобнее! \n\nℹ️ В описании аддона теперь есть ссылки на Telegram-группу и команду поддержки.\n\n🔗 QR-код позволяет быстро перейти в нашу группу @WoW_Forever_RU.\n\n⚔️ А дальше всё просто: нажмите «⚔️ WFA Mini.app» в верхней панели Telegram-группы, откройте Оружейную и загрузите туда JSON-файл, полученный из аддона WFA Armory Exporter.\n\n💚 Теперь путь от аддона до вашего персонажа в Оружейной стал понятнее и удобнее!",
+      "source": "https://t.me/WoW_Forever_RU/228",
+      "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/228.jpg"
+    },
+    {
       "id": "226",
       "title": "⚙️ WOW FOREVER: КРУПНЫЕ ОБНОВЛЕНИЯ КАЖДЫЕ 4 МЕСЯЦА!",
       "date": "2026-10-30",
