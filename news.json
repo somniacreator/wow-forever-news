@@ -2,6 +2,14 @@
   "format": "wow-forever-news-v2",
   "news": [
     {
+      "id": "304",
+      "title": "🛠 Техработы перед запуском WoW: Forever",
+      "date": "2026-11-02",
+      "body": "🛠 Техработы перед запуском WoW: Forever\n\nПо расписанию Blizzard, 4 ноября серверы WoW: Forever будут недоступны с 10:00 до 15:00 PST — с 21:00 4 ноября до 02:00 5 ноября по Москве.",
+      "source": "https://t.me/WoW_Forever_RU/304",
+      "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/304.jpg"
+    },
+    {
       "id": "300",
       "title": "🛠 Вечерняя смена в гоблинской мастерской WFA",
       "date": "2026-11-02",
