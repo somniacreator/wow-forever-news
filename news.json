@@ -2,6 +2,14 @@
   "format": "wow-forever-news-v2",
   "news": [
     {
+      "id": "319",
+      "title": "готовим обновление",
+      "date": "2026-11-05",
+      "body": "готовим обновление",
+      "source": "https://t.me/WoW_Forever_RU/319",
+      "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/319.jpg"
+    },
+    {
       "id": "313",
       "title": "🔧 БОЛЬШАЯ ПЕРЕСТРОЙКА WFA MINI APP!",
       "date": "2026-11-03",
