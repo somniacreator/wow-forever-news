@@ -2,6 +2,14 @@
   "format": "wow-forever-news-v2",
   "news": [
     {
+      "id": "329",
+      "title": "Проверим первые тесты, Все работает 👍🏻",
+      "date": "2026-11-05",
+      "body": "Проверим первые тесты, Все работает 👍🏻",
+      "source": "https://t.me/WoW_Forever_RU/329",
+      "image": "https://raw.githubusercontent.com/somniacreator/wow-forever-news/main/news-images/329.jpg"
+    },
+    {
       "id": "319",
       "title": "готовим обновление",
       "date": "2026-11-05",
